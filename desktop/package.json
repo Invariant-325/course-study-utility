@@ -71,5 +71,6 @@
     ],
     "compression": "normal",
     "afterPack": "build/after-pack.cjs"
-  }
+  },
+  "license": "GPL-3.0-only"
 }
