@@ -1,0 +1,26 @@
+node_modules/
+vendor/
+.eb-cache/
+.npm-cache/
+.tmp/
+.dsh-home/
+**/test-data/
+**/user-data/
+**/userData/
+**/logs/
+**/sessions/
+**/Cookies*
+**/Login Data*
+.env
+.env.*
+!.env.example
+*.log
+*.bak
+*.exe
+*.zip
+*.7z
+*.blockmap
+desktop/dist/
+desktop/release*/
+desktop/_pkg/
+/dist/

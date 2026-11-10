@@ -1,0 +1,8 @@
+{
+  "name": "chaoxing-helper-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "学习通助手：自动刷课 + 章节测验自动答题",
+  "main": "main.js",
+  "author": "local"
+}

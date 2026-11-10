@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>学习通助手</title>
+<style>
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font: 13px/1.6 "Microsoft YaHei", "Segoe UI", sans-serif; color: #e8edf5; background: #0f1218; }
+  #topbar { position: fixed; top: 0; left: 0; right: 340px; height: 56px; display: flex;
+    align-items: center; gap: 10px; padding: 0 14px; background: #151b24; border-bottom: 1px solid #232c3a; }
+  #topbar button { background: #1e2733; color: #cdd6e4; border: 1px solid #2c3849; border-radius: 8px;
+    padding: 8px 16px; cursor: pointer; font-size: 13px; }
+  #topbar button:hover { background: #27323f; }
+  #urlBox { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    color: #6f7d93; font-size: 11px; }
+  #side { position: fixed; top: 0; right: 0; width: 340px; height: 100%; overflow-y: auto;
+    background: #131922; border-left: 1px solid #232c3a; padding: 14px; }
+  .card { background: #182031; border: 1px solid #232c3a; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .big { width: 100%; padding: 16px 0; font-size: 17px; font-weight: 600; border-radius: 10px;
+    border: none; cursor: pointer; color: #fff; background: #2563eb; letter-spacing: 1px; }
+  .big:hover { background: #1d4fd8; }
+  .big:disabled { background: #2a3444; color: #6f7d93; cursor: not-allowed; }
+  .big.green { background: #16a34a; }
+  .big.green:hover { background: #128a3e; }
+  .big.gray { background: #334155; }
+  .row2 { display: flex; gap: 8px; margin-top: 10px; }
+  .row2 button { flex: 1; padding: 10px 0; border-radius: 8px; border: 1px solid #2c3849;
+    background: #1e2733; color: #cdd6e4; cursor: pointer; font-size: 13px; }
+  .row2 button:hover { background: #27323f; }
+  .row2 button:disabled { opacity: .4; cursor: not-allowed; }
+  .stat { font-size: 12px; color: #8b98ad; margin-top: 10px; }
+  .stat b { color: #e8edf5; font-weight: 600; }
+  .state { font-size: 16px; font-weight: 600; color: #4ade80; margin-bottom: 4px; }
+  .state.warn { color: #f0b429; }
+  .state.off { color: #7f8ca3; }
+  .prog { height: 6px; background: #0b0f15; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .prog > i { display: block; height: 100%; width: 0%; background: #2563eb; transition: width .4s; }
+  h4 { margin: 0 0 8px; font-size: 12px; color: #6ea8fe; font-weight: 600; }
+  .msg { padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-top: 8px; display: none; line-height: 1.5; }
+  .msg.show { display: block; }
+  .msg.ok { background: #12351f; color: #4ade80; }
+  .msg.err { background: #3a1d1d; color: #f28b82; }
+  .msg.info { background: #17223a; color: #9fb4d4; }
+  #qList { margin-top: 8px; max-height: 260px; overflow-y: auto; }
+  .qitem { background: #131a26; border: 1px solid #232c3a; border-radius: 8px; padding: 7px 9px;
+    margin-bottom: 6px; font-size: 12px; }
+  .qitem .qh { color: #8ba3c7; }
+  .qitem .qa { color: #4ade80; font-weight: 700; font-size: 14px; }
+  .qitem .qe { color: #f0b429; }
+  .qitem .qr { color: #f28b82; }
+  details { margin-bottom: 12px; }
+  summary { cursor: pointer; color: #8b98ad; font-size: 12px; padding: 6px 0; }
+  #log { height: 140px; overflow-y: auto; background: #0b0f15; border: 1px solid #232c3a;
+    border-radius: 8px; padding: 8px; font-size: 11px; line-height: 1.7; color: #8b98ad; }
+  #log .warn { color: #f0b429; }
+  #log .err { color: #f28b82; }
+  #log .ok { color: #4ade80; }
+  .envrow { display: flex; font-size: 11px; margin-bottom: 3px; }
+  .envrow span { color: #7f8ca3; flex: 0 0 64px; }
+  .envrow b { flex: 1; font-weight: 500; }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <button id="btnHome">课程列表</button>
+    <button id="btnBack">后退</button>
+    <button id="btnReload">刷新</button>
+    <div id="urlBox">正在打开学习通…</div>
+  </div>
+
+  <div id="side">
+    <div class="card">
+      <div class="state off" id="vState">正在连接…</div>
+      <div class="stat" id="vJob">请先在左侧登录并进入课程</div>
+      <div class="prog"><i id="vProgBar"></i></div>
+      <div class="stat" id="vCount"></div>
+      <div class="msg" id="vMsg"></div>
+      <div style="margin-top:12px">
+        <button class="big" id="vStart">开始自动刷课</button>
+      </div>
+      <div class="row2">
+        <button id="vPause">暂停</button>
+        <button id="vStop">停止</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>章节测验（自动答题）</h4>
+      <div class="stat" id="qInfo">请打开章节测验页面</div>
+      <div style="margin-top:10px">
+        <button class="big green" id="qAuto">一键识别并填写</button>
+      </div>
+      <div class="row2">
+        <button id="qScan">只扫描</button>
+        <button id="qSubmit">提交说明</button>
+      </div>
+      <div class="msg" id="qMsg"></div>
+      <div id="qList"></div>
+    </div>
+
+    <details>
+      <summary>运行环境</summary>
+      <div class="envrow"><span>DSH</span><b id="envDsh">检测中…</b></div>
+      <div class="envrow"><span>API Key</span><b id="envKey">检测中…</b></div>
+      <div class="envrow"><span>模型</span><b>deepseek-flash / low</b></div>
+    </details>
+
+    <details open>
+      <summary>运行日志</summary>
+      <div id="log"></div>
+    </details>
+  </div>
+
+<script src="app.js"></script>
+</body>
+</html>
