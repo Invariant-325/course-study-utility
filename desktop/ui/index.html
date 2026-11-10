@@ -59,6 +59,12 @@
   .envrow { display: flex; font-size: 11px; margin-bottom: 3px; }
   .envrow span { color: #7f8ca3; flex: 0 0 64px; }
   .envrow b { flex: 1; font-weight: 500; }
+  .verbar { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 4px; padding-top: 8px; border-top: 1px solid #232c3a;
+    font-size: 11px; color: #6f7d93; }
+  .verbar button { background: #1e2733; color: #8b98ad; border: 1px solid #2c3849;
+    border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 11px; }
+  .verbar button:hover { background: #27323f; color: #cdd6e4; }
 </style>
 </head>
 <body>
@@ -110,6 +116,11 @@
       <summary>运行日志</summary>
       <div id="log"></div>
     </details>
+
+    <div class="verbar">
+      <span id="verText">版本 —</span>
+      <button id="btnUpdate">更新说明</button>
+    </div>
   </div>
 
 <script src="app.js"></script>

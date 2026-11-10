@@ -271,6 +271,31 @@ async function pollPage() {
   }
 }
 
+// ---------------------------------------------------------------- 版本
+async function showVersion() {
+  try {
+    const info = await App.appInfo();
+    $('verText').textContent = '版本 ' + info.version + (info.isPackaged ? '' : '（开发）');
+    $('verText').title = '安装位置：' + info.exePath + '\n数据目录：' + info.userData;
+  } catch (e) {
+    $('verText').textContent = '版本未知';
+  }
+}
+
+function bindUpdate() {
+  const btn = $('btnUpdate');
+  if (!btn) return;
+  btn.onclick = () => {
+    msg(
+      'qMsg',
+      '本程序为本地自用版，不联网检查更新。\n' +
+        '更新方法：直接双击新版本的安装包覆盖安装即可，登录状态会保留。',
+      'info'
+    );
+    log('更新说明：下载新安装包 → 直接运行覆盖安装 → 登录状态保留', '');
+  };
+}
+
 // ---------------------------------------------------------------- 初始化
 function init() {
   if (!App) {
@@ -280,6 +305,8 @@ function init() {
   App.onLog((line) => log(line.text || line, line.kind || ''));
   log('就绪。请登录学习通，然后进入课程学习页。', 'ok');
 
+  showVersion();
+  bindUpdate();
   pollEnv();
   pollPage();
   pollRunner();

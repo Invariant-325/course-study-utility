@@ -31,6 +31,7 @@ if (isAppUi) {
 
     // 运行状态（页面/标题）
     pageInfo: () => ipcRenderer.invoke('web:info'),
+    appInfo: () => ipcRenderer.invoke('app:info'),
 
     // KV（面板保存设置）
     kvGet: (key, fallback) => {

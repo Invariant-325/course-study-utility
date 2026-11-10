@@ -507,6 +507,16 @@ function registerIpc() {
     home: dshHomeDir(),
   }));
 
+  // 版本与安装位置（用于 UI 显示与升级排查）
+  ipcMain.handle('app:info', async () => ({
+    version: app.getVersion(),
+    name: app.getName(),
+    electron: process.versions.electron,
+    userData: app.getPath('userData'),
+    exePath: app.getPath('exe'),
+    isPackaged: app.isPackaged,
+  }));
+
   ipcMain.on('menu:register', (event, label) => bootLog('[menu] ' + label));
 
   ipcMain.handle('web:goto', async (event, url) => {
