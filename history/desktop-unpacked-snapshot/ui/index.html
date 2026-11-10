@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>学习通桌面助手</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font: 12px/1.5 "Microsoft YaHei", "Segoe UI", sans-serif; color: #e6eaf2; background: #0f1218; }
+  #topbar { position: fixed; top: 0; left: 0; right: 380px; height: 52px; display: flex; align-items: center;
+    gap: 8px; padding: 0 12px; background: #151b24; border-bottom: 1px solid #232c3a; z-index: 10; }
+  #topbar button { background: #1f2836; color: #cdd6e4; border: 1px solid #2c3849; border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; font-size: 12px; }
+  #topbar button:hover { background: #2a3547; }
+  #urlBox { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    color: #7f8ca3; font-size: 11px; }
+  #side { position: fixed; top: 0; right: 0; width: 380px; height: 100%; overflow-y: auto;
+    background: #131922; border-left: 1px solid #232c3a; padding: 10px; }
+  h3 { margin: 0 0 8px; font-size: 12px; color: #6ea8fe; font-weight: 600;
+    border-bottom: 1px solid #232c3a; padding-bottom: 5px; }
+  section { margin-bottom: 14px; }
+  .row { display: flex; gap: 6px; margin-bottom: 4px; font-size: 11px; }
+  .row span { color: #7f8ca3; flex: 0 0 62px; }
+  .row b { color: #d6e0ef; font-weight: 500; flex: 1; word-break: break-all; }
+  .btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .btns button { flex: 1; min-width: 70px; padding: 6px 0; border-radius: 6px; cursor: pointer;
+    background: #1f2836; color: #cdd6e4; border: 1px solid #2c3849; font-size: 12px; }
+  .btns button:hover { background: #2a3547; }
+  .btns button:disabled { opacity: .4; cursor: not-allowed; }
+  .btns button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btns button.danger { color: #f28b82; border-color: #4a2f2f; }
+  #log { height: 150px; overflow-y: auto; background: #0b0f15; border: 1px solid #232c3a;
+    border-radius: 6px; padding: 6px; font-size: 11px; line-height: 1.6; color: #9aa7ba; }
+  #log .warn { color: #f0b429; }
+  #log .err { color: #f28b82; }
+  #log .ok { color: #4ade80; }
+  #qList { margin-top: 8px; }
+  .qitem { background: #182031; border: 1px solid #232c3a; border-radius: 6px;
+    padding: 6px 8px; margin-bottom: 5px; font-size: 11px; }
+  .qitem .qh { color: #8ba3c7; margin-bottom: 3px; }
+  .qitem .qa { color: #4ade80; font-weight: 600; }
+  .qitem .qe { color: #f0b429; }
+  .qitem .qr { color: #f28b82; }
+  .qitem .stem { color: #a8b5c9; font-size: 10px; margin-top: 2px; }
+  .msg { padding: 6px 8px; border-radius: 6px; font-size: 11px; margin-top: 6px; display: none; }
+  .msg.show { display: block; }
+  .msg.ok { background: #123524; color: #4ade80; }
+  .msg.err { background: #3a1d1d; color: #f28b82; }
+  .msg.info { background: #1b2740; color: #8ba3c7; }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <button id="btnBack">后退</button>
+    <button id="btnReload">刷新</button>
+    <button id="btnHome">课程主页</button>
+    <button id="btnStudy">进入学习页</button>
+    <div id="urlBox">about:blank</div>
+  </div>
+
+  <div id="side">
+    <section>
+      <h3>视频自动化</h3>
+      <div class="row"><span>状态</span><b id="vState">—</b></div>
+      <div class="row"><span>章节</span><b id="vJob">—</b></div>
+      <div class="row"><span>进度</span><b id="vProg">—</b></div>
+      <div class="row"><span>任务点</span><b id="vCount">—</b></div>
+      <div class="btns">
+        <button id="vStart" class="primary">开始连播</button>
+        <button id="vPause">暂停</button>
+        <button id="vResume">继续</button>
+        <button id="vStop" class="danger">停止</button>
+      </div>
+      <div class="msg" id="vMsg"></div>
+    </section>
+
+    <section>
+      <h3>AI 答题（视觉识别）</h3>
+      <div class="row"><span>测验页</span><b id="qPage">—</b></div>
+      <div class="row"><span>题目数</span><b id="qCount">—</b></div>
+      <div class="btns">
+        <button id="qScan">扫描</button>
+        <button id="qAnalyze" class="primary">识别全部</button>
+      </div>
+      <div class="btns">
+        <button id="qFill">填写答案</button>
+        <button id="qSubmit" class="danger">提交</button>
+      </div>
+      <div class="msg" id="qMsg"></div>
+      <div id="qList"></div>
+    </section>
+
+    <section>
+      <h3>运行环境</h3>
+      <div class="row"><span>DSH</span><b id="envDsh">—</b></div>
+      <div class="row"><span>API Key</span><b id="envKey">—</b></div>
+      <div class="row"><span>模型</span><b>deepseek-flash / low</b></div>
+    </section>
+
+    <section>
+      <h3>日志</h3>
+      <div id="log"></div>
+    </section>
+  </div>
+
+<script src="app.js"></script>
+</body>
+</html>

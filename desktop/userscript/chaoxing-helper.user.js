@@ -156,6 +156,10 @@ const Config = (function () {
     visionBridgeUrl: 'http://127.0.0.1:8788',
     visionBridgeToken: '',
     visionTimeoutMs: 130000,
+
+    // ---- 章节测验闸门：本节视频播完后先做本节测验，再切下一节 ----
+    quizGateEnabled: true,
+    quizPageTimeoutMs: 20000,
   };
 
   function hasGM() {
@@ -1072,6 +1076,71 @@ const CourseTree = (function () {
     return { job: null, skipped: skipped };
   }
 
+  // ---------- 章节测验（work 类任务点）----------
+  // 连播流程只处理 video；这里把"未完成的 work"单独挑出来，
+  // 供 Runner 在切下一节之前先把本节测验做掉。
+  function findPendingWorkJobs(jobs) {
+    return (jobs || []).filter(function (job) {
+      return job && job.type === 'work' && job.state !== 'finished';
+    });
+  }
+
+  // 尝试打开某个 work 任务点。
+  // 学习通的任务点结构没有稳定统一的入口，这里按可靠性从高到低尝试，
+  // 全部失败就返回 ok:false，由调用方降级为人工处理（绝不盲点）。
+  function openWorkJob(job) {
+    if (!job || !job.container) return { ok: false, reason: 'no-container' };
+    const container = job.container;
+
+    let links = [];
+    try {
+      links = Dom.toArray(container.querySelectorAll('a[href]'));
+    } catch (e) {
+      links = [];
+    }
+    for (const a of links) {
+      let href = '';
+      try {
+        href = String(a.getAttribute('href') || '');
+      } catch (e) {
+        continue;
+      }
+      if (/workId=|doHomeWorkNew|work\/doWork/i.test(href)) {
+        if (Dom.click(a)) return { ok: true, by: 'link', href: href.slice(0, 160) };
+      }
+    }
+
+    let onclickEls = [];
+    try {
+      onclickEls = Dom.toArray(container.querySelectorAll('[onclick]'));
+    } catch (e) {
+      onclickEls = [];
+    }
+    for (const el of onclickEls) {
+      let oc = '';
+      try {
+        oc = String(el.getAttribute('onclick') || '');
+      } catch (e) {
+        continue;
+      }
+      if (/work|homework|quiz|ti|exam/i.test(oc)) {
+        if (Dom.click(el)) return { ok: true, by: 'onclick', onclick: oc.slice(0, 80) };
+      }
+    }
+
+    // 兜底：点任务点图标/容器本身（多数情况只是切换右侧内容，不会误提交）
+    let icon = null;
+    try {
+      icon = container.querySelector(SEL.jobIcon);
+    } catch (e) {
+      icon = null;
+    }
+    if (icon && Dom.click(icon)) return { ok: true, by: 'icon' };
+    if (Dom.click(container)) return { ok: true, by: 'container' };
+
+    return { ok: false, reason: 'no-handle' };
+  }
+
   // ---------- 目录 ----------
   function catalogEntries() {
     const topDoc = window.document;
@@ -1296,6 +1365,8 @@ const CourseTree = (function () {
     describeJob,
     findVideoInJob,
     pickNextVideoTarget,
+    findPendingWorkJobs,
+    openWorkJob,
     catalogEntries,
     catalogProgress,
     readCatalogPending,
@@ -2355,7 +2426,19 @@ const StateMachine = (function () {
     playing: ['settling', 'paused', 'blocked', 'stopped', 'locating', 'quizWait', 'needsReview'],
     settling: ['advancing', 'awaitingConfirm', 'blocked', 'paused', 'stopped'],
     awaitingConfirm: ['advancing', 'settling', 'locating', 'blocked', 'paused', 'stopped', 'needsReview'],
-    advancing: ['locating', 'playing', 'blocked', 'needsReview', 'paused', 'stopped', 'awaitingConfirm', 'completed'],
+    // advancing 允许 quizWait：连播推进途中遇到本节未完成的章节测验，
+    // 需要停在测验上做完再继续（见 80-runner 的 processPendingQuiz）
+    advancing: [
+      'locating',
+      'playing',
+      'blocked',
+      'needsReview',
+      'paused',
+      'stopped',
+      'awaitingConfirm',
+      'completed',
+      'quizWait',
+    ],
     quizWait: ['playing', 'paused', 'blocked', 'stopped', 'advancing', 'locating'],
     paused: ['locating', 'stopped', 'blocked'],
     blocked: ['locating', 'paused', 'stopped'],
@@ -2976,6 +3059,93 @@ const Runner = (function () {
     };
   }
 
+  // ---------------- 章节测验闸门 ----------------
+  // 需求：本节视频播完后，先把本节未完成的章节测验做掉，再切下一节。
+  // 任何一步不确定就转人工（awaitingConfirm），绝不盲点或伪造完成。
+  async function waitForQuizPage(token, timeoutMs) {
+    const started = Date.now();
+    const limit = Number(timeoutMs) || 15000;
+    while (Date.now() - started < limit) {
+      if (isStale(token)) return false;
+      try {
+        if (typeof ChapterQuizRunner !== 'undefined' && ChapterQuizRunner.isQuizPage()) return true;
+      } catch (e) {
+        /* ignore */
+      }
+      await new Promise(function (r) {
+        setTimeout(r, 500);
+      });
+    }
+    return false;
+  }
+
+  function enterQuizManual(reason) {
+    R.awaitingSince = Date.now();
+    R.awaitingTries = 0;
+    R.awaitingReason = reason;
+    Log.warn(reason);
+    sm.go('awaitingConfirm', 'chapter-quiz-manual');
+    publish();
+  }
+
+  async function processPendingQuiz(token, jobs) {
+    if (Config.get('quizGateEnabled') === false) return 'off';
+    if (typeof CourseTree.findPendingWorkJobs !== 'function') return 'off';
+    if (typeof ChapterQuizRunner === 'undefined') return 'off';
+
+    const pending = CourseTree.findPendingWorkJobs(jobs);
+    if (!pending.length) return 'none';
+
+    Log.info('本节还有 ' + pending.length + ' 个未完成章节测验，先做完再继续');
+    sm.go('quizWait', 'chapter-quiz-pending');
+    publish();
+
+    let onQuizPage = false;
+    try {
+      onQuizPage = ChapterQuizRunner.isQuizPage();
+    } catch (e) {
+      onQuizPage = false;
+    }
+
+    if (!onQuizPage) {
+      const opened = CourseTree.openWorkJob(pending[0]);
+      Log.info('打开测验入口：' + (opened.ok ? opened.by : '失败(' + opened.reason + ')'));
+      if (!opened.ok) {
+        enterQuizManual('本节有 ' + pending.length + ' 个测验，但找不到可点击入口，请手动完成');
+        return 'blocked';
+      }
+      const appeared = await waitForQuizPage(token, Number(Config.get('quizPageTimeoutMs')) || 20000);
+      if (!appeared) {
+        enterQuizManual('已尝试打开测验，但没等到题目出现，请手动完成');
+        return 'blocked';
+      }
+    }
+
+    if (isStale(token)) return 'blocked';
+
+    let result = null;
+    try {
+      result = await ChapterQuizRunner.runAuto({
+        submit: true,
+        force: false,
+        confirmTimeoutMs: 8000,
+      });
+    } catch (e) {
+      result = { ok: false, phase: 'exception', error: String((e && e.message) || e) };
+    }
+
+    if (isStale(token)) return 'blocked';
+
+    if (!result || !result.ok) {
+      const why = result ? (result.phase || '') + ' ' + (result.error || '') : '无返回';
+      enterQuizManual('本章测验自动完成失败（' + why + '），请手动完成后点「继续」');
+      return 'blocked';
+    }
+
+    Log.info('本章测验已完成并提交（填 ' + (result.filled || 0) + ' 题），继续连播');
+    return 'handled';
+  }
+
   // ---------------- 推进 ----------------
   async function advance(token) {
     if (isStale(token)) return;
@@ -3000,6 +3170,16 @@ const Runner = (function () {
       await playJob(pick.job, token);
       return;
     }
+
+    // 1.5) 本节视频已无可播项 → 先做本节未完成的章节测验，做完再切下一节
+    const gate = await processPendingQuiz(token, beforeJobs);
+    if (gate === 'handled') {
+      if (isStale(token)) return;
+      // 测验做完后重新评估本节，可能还有别的任务点
+      await advance(token);
+      return;
+    }
+    if (gate === 'blocked') return;
 
     // 2) 切换下一节
     let outcome = CourseTree.clickNextCatalogItem();
@@ -4390,8 +4570,57 @@ const ChapterQuizRunner = (function () {
     };
   }
 
+  // 测验页可能在同源 iframe 内（实测 #frame_content-zj → doHomeWorkNew），
+  // 而连播脚本在顶层 frame 运行，所以必须主动找承载题目的那个 document。
+  const QUIZ_URL_RE = /doHomeWorkNew|work\/doWork/i;
+
+  function resolveQuizDoc() {
+    // 1) 当前文档本身就是测验页
+    try {
+      if (document.querySelector(ChapterQuizAdapter.QSEL.root)) return document;
+    } catch (e) {
+      /* ignore */
+    }
+    // 2) 遍历同源子框架
+    let docs = [];
+    try {
+      const collected = Dom.collectDocuments(window, SEL.maxFrameDepth);
+      docs = (collected && collected.documents) || [];
+    } catch (e) {
+      docs = [];
+    }
+    for (const entry of docs) {
+      const doc = entry && entry.doc;
+      if (!doc) continue;
+      let url = '';
+      try {
+        url = String((doc.location && doc.location.href) || '');
+      } catch (e) {
+        url = '';
+      }
+      let hasQuiz = false;
+      try {
+        hasQuiz = !!doc.querySelector(ChapterQuizAdapter.QSEL.root);
+      } catch (e) {
+        hasQuiz = false;
+      }
+      if (hasQuiz && QUIZ_URL_RE.test(url)) return doc;
+    }
+    // 3) 退一步：任何含题目容器的同源文档
+    for (const entry of docs) {
+      const doc = entry && entry.doc;
+      if (!doc) continue;
+      try {
+        if (doc.querySelector(ChapterQuizAdapter.QSEL.root)) return doc;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
   function isQuizPage() {
-    return ChapterQuizAdapter.detect(document).isQuizPage;
+    return !!resolveQuizDoc();
   }
 
   // 转成 Llm/QuizModel 认识的结构；hash 加前缀避免与视频弹题缓存串味
@@ -4436,8 +4665,10 @@ const ChapterQuizRunner = (function () {
     }
 
     const token = ++S.token;
-    const quiz = ChapterQuizAdapter.parse(document);
+    const quizDoc = resolveQuizDoc() || document;
+    const quiz = ChapterQuizAdapter.parse(quizDoc);
     S.quiz = quiz;
+    S.quizDoc = quizDoc;
     S.suggestions = {};
     S.error = '';
     S.submitted = false;
@@ -4594,49 +4825,161 @@ const ChapterQuizRunner = (function () {
     return errors.length === 0;
   }
 
-  // ---------- 提交（必须由用户确认后调用）----------
-  function submit() {
+  // 平台点「提交」后会弹「提示 / 确认提交? / 取消 / 提交」二次确认。
+  // 这里只在弹窗里找"确认"类按钮，且排除取消类，避免误点。
+  const CONFIRM_TEXT = /^(提交|确定|确认|是|继续)$/;
+  const CANCEL_TEXT = /^(取消|关闭|返回|否)$/;
+
+  function findConfirmButton() {
+    const docs = [];
+    try {
+      const collected = Dom.collectDocuments(window, SEL.maxFrameDepth);
+      docs.push.apply(docs, (collected && collected.documents) || []);
+    } catch (e) {
+      /* ignore */
+    }
+    docs.push({ doc: window.document });
+
+    for (const entry of docs) {
+      const doc = entry && entry.doc;
+      if (!doc) continue;
+      let nodes = [];
+      try {
+        nodes = Dom.toArray(doc.querySelectorAll('a,button,input[type=button],input[type=submit]'));
+      } catch (e) {
+        continue;
+      }
+      for (const node of nodes) {
+        let text = '';
+        try {
+          text = String(node.textContent || node.value || '').replace(/\s+/g, '');
+        } catch (e) {
+          continue;
+        }
+        if (!text || CANCEL_TEXT.test(text) || !CONFIRM_TEXT.test(text)) continue;
+        if (typeof Dom.isVisible === 'function' && !Dom.isVisible(node)) continue;
+        // 必须处于可见弹层里，避免命中页面上的普通"提交"按钮
+        let inPopup = false;
+        let cur = node;
+        for (let i = 0; i < 6 && cur; i++) {
+          const cls = String(cur.className || '');
+          const id = String(cur.id || '');
+          if (/pop|dialog|layer|mask|modal|alert/i.test(cls) || /pop|dialog|layer|mask/i.test(id)) {
+            inPopup = true;
+            break;
+          }
+          cur = cur.parentElement;
+        }
+        if (inPopup) return node;
+      }
+    }
+    return null;
+  }
+
+  async function submitAndConfirm(timeoutMs) {
     if (!S.quiz) {
       S.error = '还没有解析结果';
-      return false;
+      return { ok: false, error: 'no-quiz' };
     }
     if (S.submitted) {
       S.error = '已经提交过';
-      return false;
+      return { ok: false, error: 'already-submitted' };
     }
 
-    const btns = ChapterQuizAdapter.buttons(document);
+    const btns = ChapterQuizAdapter.buttons(S.quizDoc || document);
     if (!btns.submit) {
       S.error = '未找到提交按钮（.btnSubmit）';
       publish();
-      return false;
+      return { ok: false, error: 'no-submit-button' };
     }
-
     if (!Dom.click(btns.submit)) {
       S.error = '提交按钮点击失败';
       publish();
-      return false;
+      return { ok: false, error: 'submit-click-failed' };
+    }
+
+    // 等二次确认弹窗出现并点击
+    const waitMs = Number(timeoutMs) || 8000;
+    const started = Date.now();
+    let confirmed = false;
+    while (Date.now() - started < waitMs) {
+      const btn = findConfirmButton();
+      if (btn) {
+        Dom.click(btn);
+        confirmed = true;
+        break;
+      }
+      await new Promise(function (r) {
+        setTimeout(r, 300);
+      });
     }
 
     S.submitted = true;
     S.phase = PHASE.submitted;
     publish();
 
-    // 提交后读取页面反馈，不把"点击成功"当成"测验完成"
-    setTimeout(function () {
-      let feedback = '';
-      try {
-        const pop = document.querySelector('.popDiv, .popup, .layui-layer, .maskDiv');
-        if (pop && Dom.isVisible(pop)) feedback = String(pop.textContent || '').replace(/\s+/g, ' ').slice(0, 120);
-      } catch (e) {
-        /* ignore */
-      }
-      S.lastVerify = (S.lastVerify || []).concat([{ submitFeedback: feedback || '未捕获到页面反馈' }]);
-      Log.info('提交后页面反馈：' + (feedback || '未捕获到明确反馈，请人工确认'));
-      publish();
-    }, 1200);
+    Log.info(confirmed ? '已提交并点了确认弹窗' : '已点提交，但没看到确认弹窗');
 
-    return true;
+    // 提交后读反馈，不把"点成功"当"测验完成"
+    await new Promise(function (r) {
+      setTimeout(r, 1500);
+    });
+    let feedback = '';
+    try {
+      const pop = document.querySelector('.popDiv, .popup, .layui-layer, .maskDiv');
+      if (pop && Dom.isVisible(pop)) feedback = String(pop.textContent || '').replace(/\s+/g, ' ').slice(0, 120);
+    } catch (e) {
+      /* ignore */
+    }
+    S.lastVerify = (S.lastVerify || []).concat([{ submitFeedback: feedback || '未捕获到页面反馈' }]);
+    publish();
+
+    return { ok: confirmed, feedback: feedback, error: confirmed ? '' : 'no-confirm-dialog' };
+  }
+
+  /**
+   * 一键完成：识别 → 填写 → 提交（供连播流程调用）。
+   * @param {object} options { submit:boolean, force:boolean }
+   */
+  async function runAuto(options) {
+    const opts = options || {};
+
+    if (!isQuizPage()) {
+      return { ok: false, phase: 'detect', error: 'not-quiz-page' };
+    }
+
+    const analyzed = await analyze();
+    if (!analyzed || S.phase !== PHASE.ready) {
+      return { ok: false, phase: 'analyze', error: S.error || 'analyze-failed' };
+    }
+
+    const answered = Object.keys(S.suggestions).filter(function (k) {
+      const s = S.suggestions[k];
+      return s && s.status === 'ok' && s.letters && s.letters.length;
+    });
+    if (!answered.length) {
+      return { ok: false, phase: 'analyze', error: 'no-answer' };
+    }
+
+    fillAll({ force: opts.force === true });
+
+    const needFill = answered.length;
+    const filledOk = (S.lastVerify || []).filter(function (v) {
+      return v && v.ok;
+    }).length;
+    if (filledOk < needFill) {
+      return { ok: false, phase: 'fill', error: 'fill-incomplete', filled: filledOk, need: needFill };
+    }
+
+    if (opts.submit === false) {
+      return { ok: true, phase: 'filled', filled: filledOk };
+    }
+
+    const submitted = await submitAndConfirm(opts.confirmTimeoutMs);
+    if (!submitted.ok) {
+      return { ok: false, phase: 'submit', error: submitted.error, filled: filledOk };
+    }
+    return { ok: true, phase: 'submitted', filled: filledOk, feedback: submitted.feedback };
   }
 
   return {
@@ -4648,7 +4991,10 @@ const ChapterQuizRunner = (function () {
     snapshot,
     analyze,
     fillAll,
-    submit,
+    // 面板按钮走的入口：现在会同时处理平台的二次确认弹窗
+    submit: submitAndConfirm,
+    submitAndConfirm,
+    runAuto,
     stop,
     reset,
   };

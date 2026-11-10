@@ -1,6 +1,6 @@
 {
   "name": "chaoxing-helper-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "学习通助手：自动刷课 + 章节测验自动答题",
   "main": "main.js",
@@ -45,13 +45,13 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "学习通助手",
-      "runAfterFinish": false,
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
