@@ -16,26 +16,38 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 
-const BOOT_LOG = path.join(__dirname, 'boot-error.log');
+const electron = require('electron');
+if (!electron || typeof electron !== 'object' || !electron.app) {
+  console.error('GUI startup requires Electron. Clear ELECTRON_RUN_AS_NODE and launch again.');
+  process.exit(1);
+}
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog } = electron;
+const BOOT_LOG = path.join(app.getPath('userData'), 'logs', 'startup.log');
 function bootLog(msg) {
+  const line = '[' + new Date().toISOString() + '] ' + msg;
   try {
-    fs.appendFileSync(BOOT_LOG, '[' + new Date().toISOString() + '] ' + msg + '\n');
+    fs.mkdirSync(path.dirname(BOOT_LOG), { recursive: true });
+    if (fs.existsSync(BOOT_LOG) && fs.statSync(BOOT_LOG).size > 1024 * 1024) {
+      fs.renameSync(BOOT_LOG, BOOT_LOG + '.previous');
+    }
+    fs.appendFileSync(BOOT_LOG, line + '\n');
   } catch (e) {
-    /* ignore */
+    console.error('[startup-log]', e.message);
   }
 }
-process.on('uncaughtException', (e) => bootLog('uncaught: ' + (e && (e.stack || e.message || e))));
-process.on('unhandledRejection', (e) => bootLog('unhandled: ' + (e && (e.stack || e.message || e))));
-bootLog('boot; electron=' + (process.versions.electron || 'none'));
-
-const {
-  app,
-  BrowserWindow,
-  WebContentsView,
-  ipcMain,
-  session,
-  Menu,
-} = require('electron');
+function fatalStartup(error) {
+  const detail = String(error && (error.stack || error.message) || error);
+  bootLog('fatal: ' + detail);
+  console.error(detail);
+  dialog.showErrorBox('学习通助手启动失败', '程序启动失败，详情已记录到：\n' + BOOT_LOG + '\n\n' + detail);
+  app.exit(1);
+}
+process.on('uncaughtException', fatalStartup);
+process.on('unhandledRejection', (e) => {
+  bootLog('unhandled: ' + String(e && (e.stack || e.message) || e));
+  console.error(e);
+});
+bootLog('boot; version=' + app.getVersion() + '; electron=' + process.versions.electron);
 
 const TOP_BAR = 56;
 const SIDE_PANEL = 340;
@@ -128,14 +140,14 @@ ${userscript}
 }
 
 function collectFrames(frame, out) {
-  try {
-    out.push(frame);
-    const children = frame.framesInSubtree || frame.frames || [];
-    for (const child of children) {
-      if (child !== frame) collectFrames(child, out);
-    }
-  } catch (e) {
-    /* ignore */
+  const seen = new Set(out);
+  const queue = [frame];
+  while (queue.length && out.length < 256) {
+    const current = queue.shift();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+    out.push(current);
+    try { queue.push(...current.frames); } catch (e) { /* frame may detach */ }
   }
 }
 
@@ -188,7 +200,9 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, 'ui', 'index.html'));
+  win.loadFile(path.join(__dirname, 'ui', 'index.html')).catch(fatalStartup);
+  win.webContents.on('did-finish-load', () => bootLog('control-panel-loaded'));
+  win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
 
   const persist = session.fromPartition('persist:chaoxing');
   view = new WebContentsView({
@@ -205,6 +219,11 @@ function createWindow() {
   layout();
 
   const wc = view.webContents;
+  wc.on('render-process-gone', (_event, details) => bootLog('web-process-gone: ' + details.reason));
+  wc.on('did-finish-load', () => bootLog('web-page-loaded'));
+  wc.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) bootLog('web-load-failed: ' + code + ' ' + description);
+  });
 
   wc.setWindowOpenHandler(({ url }) => {
     try {
@@ -223,10 +242,11 @@ function createWindow() {
     if (win && !win.isDestroyed()) win.setTitle(title + ' — 学习通助手');
   });
 
-  view.webContents.loadURL('https://mooc1.chaoxing.com/');
+  view.webContents.loadURL('https://mooc1.chaoxing.com/').catch((e) => bootLog('homepage-load-failed: ' + e.code));
 
   win.on('resize', layout);
   win.on('closed', () => {
+    if (view && !view.webContents.isDestroyed()) view.webContents.close();
     win = null;
     view = null;
   });
@@ -557,18 +577,22 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    bootLog('ready');
     loadStore();
-    injectCode = buildInjectCode(loadUserscript());
-    if (!injectCode || injectCode.length < 1000) bootLog('userscript empty');
+    const userscript = loadUserscript();
+    if (userscript.length < 1000) throw new Error('Missing bundled userscript. Reinstall the complete application.');
+    injectCode = buildInjectCode(userscript);
     registerIpc();
     Menu.setApplicationMenu(null);
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
-  });
+  }).catch(fatalStartup);
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
 }
+
+app.on('before-quit', () => bootLog('quit'));

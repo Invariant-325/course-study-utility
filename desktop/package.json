@@ -1,8 +1,75 @@
 {
   "name": "chaoxing-helper-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "学习通助手：自动刷课 + 章节测验自动答题",
   "main": "main.js",
-  "author": "local"
+  "author": "local",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "verify:package": "node scripts/verify-package.cjs"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.local.chaoxing.helper",
+    "productName": "学习通助手",
+    "copyright": "个人自用",
+    "asar": true,
+    "electronDist": "vendor/electron/dist",
+    "directories": {
+      "output": "../dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "ui/**/*",
+      "userscript/**/*",
+      "!**/*.log"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ChaoxingHelper-${version}-Setup-${arch}.exe",
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "学习通助手",
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "allowElevation": false,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052",
+      "differentialPackage": false,
+      "artifactName": "ChaoxingHelper-${version}-Setup-${arch}.exe"
+    },
+    "executableName": "ChaoxingHelper",
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "compression": "normal",
+    "afterPack": "build/after-pack.cjs"
+  }
 }
