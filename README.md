@@ -1,6 +1,8 @@
-# 学习通助手 · Chaoxing Helper
+# 课程伴学工具 · Course Study Utility
 
-一个学习通辅助项目，包含 Windows Electron 桌面客户端和 Tampermonkey 用户脚本。项目保留了课程自然播放、任务状态跟踪、章节切换及 AI 题目辅助代码。
+兼容 **学习通（超星平台）** 的第三方课程辅助工具，包含 Windows Electron 桌面客户端和 Tampermonkey 用户脚本。项目保留了课程自然播放、任务状态跟踪、章节切换及 AI 题目辅助代码。
+
+> 本项目是个人独立开发的第三方兼容工具，并非学习通或超星官方产品，与超星平台不存在隶属、授权、合作或背书关系。相关名称仅用于说明兼容性，其商标及其他权利归各自权利人所有。
 
 桌面端把网页与控制面板放在同一窗口里，账号登录由用户自行完成；0.1.2 起的章节测验闸门会尝试自动填写并提交，具体行为见下方说明。默认按 1.0 倍速正常播放，不修改进度或伪造学习时长。
 
@@ -8,19 +10,21 @@
 
 ## 下载与安装
 
-- **优先使用 [v0.1.1 稳定封装版](https://github.com/Invariant-325/chaoxing-helper/releases/tag/v0.1.1)**：本轮已完成安装与启动验收。
-- [查看所有版本](https://github.com/Invariant-325/chaoxing-helper/releases)：包括 v0.1.0 历史归档及 v0.1.2、v0.1.3 后续更新。
+- **优先使用 [v0.1.4 推荐版](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.1.4)**：新名称版；已完成安装、启动及覆盖升级测试，业务功能仍需用户实机验收。
+- [查看所有版本](https://github.com/Invariant-325/course-study-utility/releases)：包括 v0.1.0 历史归档及 v0.1.2、v0.1.3 后续更新。
 
 Windows x64 用户下载 `Setup-x64.exe` 后按向导安装；免安装版需要完整解压，再运行“启动学习通助手.cmd”或 `app/ChaoxingHelper.exe`。不要只复制 EXE，也不要直接在 ZIP 内运行。
 
-源码主分支保留当前 v0.1.3 工程。v0.1.2 和 v0.1.3 的本地构建产物作为预发布归档，不把 v0.1.1 的验收结论套用到后续版本。
+源码主分支保留当前 v0.1.4 工程。0.1.4 更名为“课程伴学工具”，历史版本保留原名称用于追溯。v0.1.2 和 v0.1.3 的本地构建产物作为预发布归档，不把 v0.1.1 的验收结论套用到后续版本。
 
 ## 功能与验证状态
 
+v0.1.4 离线测试 **132/132 通过**，修复了测验失败后无法进入人工确认的状态转换问题。已验证 0.1.3 → 0.1.4 覆盖升级、旧测试设置保留、中性标题与兼容声明。真实登录、课程播放、AI 视觉识题及自动提交仍待用户验证。见 [核验记录](docs/verification-0.1.3-0.1.4.md)。
+
 | 项目 | 当前说明 |
 |---|---|
-| Windows 安装、启动、重开与卸载 | v0.1.1 已实测通过 |
-| 控制面板、学习通公开首页、设置保存、启动日志 | v0.1.1 已实测通过 |
+| Windows 安装、启动、重开与卸载 | v0.1.1、v0.1.3、v0.1.4 已实测通过 |
+| 控制面板、学习通公开首页、设置保存、启动日志 | v0.1.1、v0.1.3、v0.1.4 已实测通过 |
 | 视频自然播放、任务点识别与章节切换 | 原工程已实现并有历史测试记录；本次上传未重新做账号内验收 |
 | 弹题、章节测验识别与 AI 建议 | 代码保留；依赖模型配置及页面适配，不能视为本次重新验证通过 |
 | v0.1.2 / v0.1.3 | 后续工程快照，按预发布管理；0.1.3 新增版本号与手动更新说明 |
@@ -76,14 +80,20 @@ node build.mjs
 
 将生成的 `userscript/dist/chaoxing-helper.user.js` 安装到 Tampermonkey。离线测试入口是 `userscript/tests/run-tests.mjs`，测试使用 jsdom；本次公开归档没有纳入本机 node_modules 缓存。
 
+## 兼容性与搜索关键词
+
+学习通、超星、chaoxing、xuexitong 仅用于说明兼容平台与帮助检索，不是本工具的名称，也不表示官方隶属或背书。
+
 ## 版本沿革
 
 | 版本 | 内容 |
 |---|---|
-| [v0.1.0](https://github.com/Invariant-325/chaoxing-helper/tree/v0.1.0) | 原始桌面发布源码与安装脚本；保留已知问题，供对照 |
-| [v0.1.1](https://github.com/Invariant-325/chaoxing-helper/tree/v0.1.1) | 安装封装修复、中英文资源、可写日志、iframe 枚举与退出清理 |
-| [v0.1.2](https://github.com/Invariant-325/chaoxing-helper/tree/v0.1.2) | 后续工程，增加章节测验闸门等逻辑 |
-| [v0.1.3](https://github.com/Invariant-325/chaoxing-helper/tree/v0.1.3) | 增加界面版本号与手动更新说明，保留对应源码和本地安装包 |
+| [v0.1.0](https://github.com/Invariant-325/course-study-utility/tree/v0.1.0) | 原始桌面发布源码与安装脚本；保留已知问题，供对照 |
+| [v0.1.1](https://github.com/Invariant-325/course-study-utility/tree/v0.1.1) | 安装封装修复、中英文资源、可写日志、iframe 枚举与退出清理 |
+| [v0.1.2](https://github.com/Invariant-325/course-study-utility/tree/v0.1.2) | 后续工程，增加章节测验闸门等逻辑 |
+| [v0.1.3](https://github.com/Invariant-325/course-study-utility/tree/v0.1.3) | 增加界面版本号与手动更新说明，保留对应源码和本地安装包 |
+
+v0.1.4：更名、加入醒目的第三方兼容声明、安装包附带 GPL 与免责声明；保留旧安装身份和数据路径以便覆盖升级。
 
 原工程未发现 Git 提交历史。本仓库按照现存发布包和源码补录版本快照，不代表恢复了原始逐次开发提交，也没有回填或伪造历史提交日期。详见 [快照来源](history/README.md) 和 [更新记录](CHANGELOG.md)。
 

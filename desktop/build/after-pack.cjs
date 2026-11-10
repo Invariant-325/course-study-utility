@@ -1,13 +1,15 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
-module.exports = async function (ctx) {
-  const dir = ctx.appOutDir;
-  for (const locale of ['zh-CN', 'en-US']) {
-    if (!fs.existsSync(path.join(dir, 'locales', locale + '.pak'))) throw new Error('Missing locale: ' + locale);
+const {execFileSync} = require('node:child_process');
+module.exports = async ctx => {
+  for (const locale of ['zh-CN','en-US']) {
+    if (!fs.existsSync(path.join(ctx.appOutDir,'locales',locale+'.pak'))) throw new Error('Missing locale '+locale);
   }
-  const tool = process.env.CHAOXING_RCEDIT;
-  if (tool) {
-    execFileSync(tool, [path.join(dir, 'ChaoxingHelper.exe'), '--set-icon', path.join(ctx.packager.projectDir, 'build', 'icon.ico'), '--set-file-version', '0.1.1', '--set-product-version', '0.1.1', '--set-version-string', 'ProductName', '学习通助手', '--set-version-string', 'FileDescription', '学习通助手', '--set-version-string', 'OriginalFilename', 'ChaoxingHelper.exe'], { stdio: 'inherit' });
+  if (process.env.CHAOXING_RCEDIT) {
+    execFileSync(process.env.CHAOXING_RCEDIT,[path.join(ctx.appOutDir,'CourseStudyUtility.exe'),
+      '--set-icon',path.join(ctx.packager.projectDir,'build/icon.ico'),
+      '--set-file-version',ctx.packager.appInfo.version,'--set-product-version',ctx.packager.appInfo.version,
+      '--set-version-string','ProductName','课程伴学工具','--set-version-string','FileDescription','课程伴学工具',
+      '--set-version-string','OriginalFilename','CourseStudyUtility.exe'],{stdio:'inherit'});
   }
 };

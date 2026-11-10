@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         学习通课程自动连播助手（自然播放版）
+// @name         课程伴学工具（自然播放版）
 // @namespace    local.chaoxing.natural-watch
-// @version      0.2.0
+// @version      0.1.4
 // @description  按平台正常规则连播课程视频（默认 1.0 倍速），播完自动切下一个视频与章节；不改进度、不改倍速、不绕过检测。
 // @author       local
 // @license      MIT

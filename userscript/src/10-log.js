@@ -23,7 +23,7 @@ const Log = (function () {
 
     if (LEVELS[level] >= minLevel) {
       const sink = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
-      sink.call(console, '[学习通助手][' + record.time + '][' + level + '] ' + record.message);
+      sink.call(console, '[课程伴学工具][' + record.time + '][' + level + '] ' + record.message);
     }
     for (const listener of listeners) {
       try {

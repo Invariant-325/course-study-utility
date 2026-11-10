@@ -22,6 +22,13 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
   process.exit(1);
 }
 const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog } = electron;
+// Preserve the established data directory across the display-name change.
+if (!app.commandLine.hasSwitch('user-data-dir')) {
+  const legacyData = path.join(app.getPath('appData'), 'chaoxing-helper-desktop');
+  fs.mkdirSync(legacyData, { recursive: true });
+  app.setPath('userData', legacyData);
+}
+app.setName('课程伴学工具');
 const BOOT_LOG = path.join(app.getPath('userData'), 'logs', 'startup.log');
 function bootLog(msg) {
   const line = '[' + new Date().toISOString() + '] ' + msg;
@@ -39,7 +46,7 @@ function fatalStartup(error) {
   const detail = String(error && (error.stack || error.message) || error);
   bootLog('fatal: ' + detail);
   console.error(detail);
-  dialog.showErrorBox('学习通助手启动失败', '程序启动失败，详情已记录到：\n' + BOOT_LOG + '\n\n' + detail);
+  dialog.showErrorBox('课程伴学工具启动失败', '程序启动失败，详情已记录到：\n' + BOOT_LOG + '\n\n' + detail);
   app.exit(1);
 }
 process.on('uncaughtException', fatalStartup);
@@ -189,7 +196,7 @@ function createWindow() {
     height: 900,
     minWidth: 960,
     minHeight: 640,
-    title: '学习通助手',
+    title: '课程伴学工具',
     backgroundColor: '#0f1218',
     autoHideMenuBar: true,
     webPreferences: {
@@ -239,7 +246,7 @@ function createWindow() {
   wc.on('did-navigate', () => setTimeout(injectAllFrames, 600));
 
   wc.on('page-title-updated', (event, title) => {
-    if (win && !win.isDestroyed()) win.setTitle(title + ' — 学习通助手');
+    if (win && !win.isDestroyed()) win.setTitle('课程伴学工具');
   });
 
   view.webContents.loadURL('https://mooc1.chaoxing.com/').catch((e) => bootLog('homepage-load-failed: ' + e.code));

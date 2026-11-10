@@ -1,8 +1,8 @@
 {
-  "name": "chaoxing-helper-desktop",
-  "version": "0.1.3",
+  "name": "course-study-utility",
+  "version": "0.1.4",
   "private": true,
-  "description": "学习通助手：自动刷课 + 章节测验自动答题",
+  "description": "兼容学习通（超星平台）的个人第三方课程辅助工具，包含任务跟踪与AI视觉识题作答，非官方产品。",
   "main": "main.js",
   "author": "local",
   "scripts": {
@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.local.chaoxing.helper",
-    "productName": "学习通助手",
+    "productName": "课程伴学工具",
     "copyright": "个人自用",
     "asar": true,
     "electronDist": "vendor/electron/dist",
@@ -40,7 +40,7 @@
           ]
         }
       ],
-      "artifactName": "ChaoxingHelper-${version}-Setup-${arch}.exe",
+      "artifactName": "CourseStudyUtility-${version}-Setup-${arch}.exe",
       "signAndEditExecutable": false,
       "icon": "build/icon.ico"
     },
@@ -50,7 +50,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "学习通助手",
+      "shortcutName": "课程伴学工具",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "installerIcon": "build/icon.ico",
@@ -62,15 +62,33 @@
       ],
       "language": "2052",
       "differentialPackage": false,
-      "artifactName": "ChaoxingHelper-${version}-Setup-${arch}.exe"
+      "artifactName": "CourseStudyUtility-${version}-Setup-${arch}.exe"
     },
-    "executableName": "ChaoxingHelper",
+    "executableName": "CourseStudyUtility",
     "electronLanguages": [
       "zh-CN",
       "en-US"
     ],
     "compression": "normal",
-    "afterPack": "build/after-pack.cjs"
+    "afterPack": "build/after-pack.cjs",
+    "extraFiles": [
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "../NOTICE.md",
+        "to": "NOTICE.md"
+      },
+      {
+        "from": "../OPEN_SOURCE.md",
+        "to": "OPEN_SOURCE.md"
+      },
+      {
+        "from": "../DISCLAIMER.md",
+        "to": "DISCLAIMER.md"
+      }
+    ]
   },
   "license": "GPL-3.0-only"
 }

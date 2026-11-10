@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         学习通课程自动连播助手（自然播放版）
+// @name         课程伴学工具（自然播放版）
 // @namespace    local.chaoxing.natural-watch
-// @version      0.2.0
+// @version      0.1.4
 // @description  按平台正常规则连播课程视频（默认 1.0 倍速），播完自动切下一个视频与章节；不改进度、不改倍速、不绕过检测。
 // @author       local
 // @license      MIT
@@ -59,7 +59,7 @@ const Log = (function () {
 
     if (LEVELS[level] >= minLevel) {
       const sink = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
-      sink.call(console, '[学习通助手][' + record.time + '][' + level + '] ' + record.message);
+      sink.call(console, '[课程伴学工具][' + record.time + '][' + level + '] ' + record.message);
     }
     for (const listener of listeners) {
       try {
@@ -2439,7 +2439,7 @@ const StateMachine = (function () {
       'completed',
       'quizWait',
     ],
-    quizWait: ['playing', 'paused', 'blocked', 'stopped', 'advancing', 'locating'],
+    quizWait: ['playing', 'paused', 'blocked', 'stopped', 'advancing', 'locating', 'awaitingConfirm'],
     paused: ['locating', 'stopped', 'blocked'],
     blocked: ['locating', 'paused', 'stopped'],
     needsReview: ['locating', 'paused', 'stopped'],
@@ -5748,7 +5748,7 @@ const UI = (function () {
     }
     const text = JSON.stringify(data, null, 2);
     // 打印到控制台，并尝试复制到剪贴板，便于贴给我做选择器适配
-    console.log('[学习通助手] 诊断导出\n' + text);
+    console.log('[课程伴学工具] 诊断导出\n' + text);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(
@@ -6411,7 +6411,7 @@ function boot() {
     GM_registerMenuCommand('诊断导出（复制到剪贴板）', function () {
       const data = Runner.diagnose();
       const text = JSON.stringify(data, null, 2);
-      console.log('[学习通助手] 诊断导出\n' + text);
+      console.log('[课程伴学工具] 诊断导出\n' + text);
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(
           function () {

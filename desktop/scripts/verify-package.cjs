@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const asar = require('@electron/asar');
 const dir = path.resolve(__dirname, '../../dist/win-unpacked');
-for (const f of ['ChaoxingHelper.exe', 'locales/zh-CN.pak', 'locales/en-US.pak', 'resources/app.asar']) {
+for (const f of ['CourseStudyUtility.exe', 'locales/zh-CN.pak', 'locales/en-US.pak', 'resources/app.asar']) {
   if (!fs.existsSync(path.join(dir, f))) throw new Error('Missing: ' + f);
 }
 const archive = path.join(dir, 'resources/app.asar');

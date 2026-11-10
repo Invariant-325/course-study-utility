@@ -460,7 +460,7 @@ const UI = (function () {
     }
     const text = JSON.stringify(data, null, 2);
     // 打印到控制台，并尝试复制到剪贴板，便于贴给我做选择器适配
-    console.log('[学习通助手] 诊断导出\n' + text);
+    console.log('[课程伴学工具] 诊断导出\n' + text);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(

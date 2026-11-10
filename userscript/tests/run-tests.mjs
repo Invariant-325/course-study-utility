@@ -14,3 +14,5 @@ import './runner-regression.test.mjs';
 import './quiz.test.mjs';
 import './quiz-runner.test.mjs';
 import './chapter-quiz.test.mjs';
+
+import './qa-quiz-gate.mjs';

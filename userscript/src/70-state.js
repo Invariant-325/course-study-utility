@@ -27,7 +27,7 @@ const StateMachine = (function () {
       'completed',
       'quizWait',
     ],
-    quizWait: ['playing', 'paused', 'blocked', 'stopped', 'advancing', 'locating'],
+    quizWait: ['playing', 'paused', 'blocked', 'stopped', 'advancing', 'locating', 'awaitingConfirm'],
     paused: ['locating', 'stopped', 'blocked'],
     blocked: ['locating', 'paused', 'stopped'],
     needsReview: ['locating', 'paused', 'stopped'],

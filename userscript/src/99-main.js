@@ -60,7 +60,7 @@ function boot() {
     GM_registerMenuCommand('诊断导出（复制到剪贴板）', function () {
       const data = Runner.diagnose();
       const text = JSON.stringify(data, null, 2);
-      console.log('[学习通助手] 诊断导出\n' + text);
+      console.log('[课程伴学工具] 诊断导出\n' + text);
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(
           function () {
