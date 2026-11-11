@@ -4,7 +4,7 @@
 
 [下载最新版本](https://github.com/Invariant-325/course-study-utility/releases/latest) · [更新日志](CHANGELOG.md) · [安装与更新](docs/installation-and-updates.md)
 
-**开发预览：[0.2.0 Beta 1](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.1)**，功能尚不完整，仅作阶段归档；正式版本仍为 **0.1.9**。
+**开发预览：[0.2.0 Beta 4](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.4)**。0.2.0 系列按 Beta 版本迭代，正式版本仍为 **0.1.9**。
 
 本项目由个人独立维护，**不是学习通或超星官方产品**，与超星平台没有隶属、授权、合作或背书关系。相关名称仅用于说明兼容性，商标及其他权利归各自权利人所有。
 
