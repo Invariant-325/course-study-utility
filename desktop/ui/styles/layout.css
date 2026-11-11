@@ -707,7 +707,8 @@
   pointer-events: none;
 }
 
-#layers > * {
+/* Hidden overlays must not capture clicks through the full-window layer. */
+#layers > *[data-open='true'] {
   pointer-events: auto;
 }
 

@@ -562,6 +562,15 @@ async function askVision(payload) {
 
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
+  ipcMain.handle('window:control', (_event, action) => {
+    if (!win || win.isDestroyed()) return { ok: false, error: 'NO_WINDOW' };
+    if (action === 'minimize') win.minimize();
+    else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
+    else if (action === 'hide') win.close();
+    else if (action === 'quit') { isQuitting = true; app.quit(); }
+    else return { ok: false, error: 'INVALID_ACTION' };
+    return { ok: true };
+  });
   ipcMain.on('kv:get', (event, key, fallback) => {
     event.returnValue =
       Object.prototype.hasOwnProperty.call(store, key) && store[key] !== null ? store[key] : fallback;

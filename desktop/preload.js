@@ -18,6 +18,7 @@ const isAppUi = (() => {
 
 if (isAppUi) {
   contextBridge.exposeInMainWorld('__cxApp', {
+    windowControl: (action) => ipcRenderer.invoke('window:control', action),
     // 网页控制
     goto: (url) => ipcRenderer.invoke('web:goto', url),
     toggleWeb: (force) => ipcRenderer.invoke('web:toggle', force),
