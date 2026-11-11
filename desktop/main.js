@@ -21,7 +21,7 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
   console.error('GUI startup requires Electron. Clear ELECTRON_RUN_AS_NODE and launch again.');
   process.exit(1);
 }
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, safeStorage } = electron;
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, safeStorage, Tray, Notification, nativeImage } = electron;
 const { createCourseBrowser } = require("./course-browser.cjs");
 const { retainLogin } = require("./login-session.cjs");
 const { isPlatformUrl } = require("./browser-policy.cjs");
@@ -204,13 +204,20 @@ async function createWindow() {
   // Use the portal's own course-menu handler after normal platform login.
   browser.home();
   win.on('close', event => {
+    // 收起窗口 = 收进托盘（不退出），这样刷课能继续
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+      bootLog('window-hidden-to-tray');
+      return;
+    }
     if (closingWindow) return;
     event.preventDefault();
     closingWindow = true;
     (async () => {
       try { flushStore(); await loginSession.flush(); }
       catch { bootLog('close-save-failed'); }
-      browser.close();
+      try { browser.close(); } catch (e) {}
       win.destroy();
     })();
   });
@@ -454,6 +461,7 @@ async function askVision(payload) {
   // 直连 DeepSeek（OpenAI 兼容）——不需要用户安装 DSH。
   // 提示词内置，图片以 data URL 内联，返回严格 JSON。
   let modelText = '';
+  let usage = {};
   try {
     const res = await fetch(MODEL_ENDPOINT, {
       method: 'POST',
@@ -493,6 +501,7 @@ async function askVision(payload) {
       return { ok: false, status: 'unreadable', error: 'INVALID_RESPONSE', elapsedMs };
     }
 
+    usage = (json && json.usage) || {};
     const content =
       json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
     modelText = content || '';
@@ -534,6 +543,10 @@ async function askVision(payload) {
   return {
     ok: errors.length === 0 && status === 'ok' && answers.length > 0,
     status, type, answers, errors, questionId, elapsedMs,
+    usage: {
+      promptTokens: Number(usage.prompt_tokens) || 0,
+      completionTokens: Number(usage.completion_tokens) || 0,
+    },
   };
 }
 
@@ -567,9 +580,108 @@ function registerIpc() {
     try {
       const r = await askVision(payload);
       bootLog('[vision] ' + (payload && payload.questionId) + ' ok=' + r.ok + ' ' + (r.elapsedMs || 0) + 'ms');
+      // 记录一次模型调用（无论成功失败，都算一次请求）
+      try {
+        bumpStats({
+          visionCalls: 1,
+          visionOk: r.ok ? 1 : 0,
+          visionFail: r.ok ? 0 : 1,
+          promptTokens: (r.usage && r.usage.promptTokens) || 0,
+          completionTokens: (r.usage && r.usage.completionTokens) || 0,
+        });
+      } catch (e) {
+        /* ignore */
+      }
       return r;
     } catch (e) {
+      try {
+        bumpStats({ visionCalls: 1, visionFail: 1 });
+      } catch (err) {
+        /* ignore */
+      }
       return { ok: false, status: 'unreadable', error: String(e && e.message) };
+    }
+  });
+
+  // ---------------- 统计（按日聚合，本地文件）----------------
+  // 只记录客户端观察到的事实：请求次数、token、播放秒数。
+  // 不推断成绩、不把"本地认为完成"写成"平台已确认"。
+  const STATS_FILE = () => path.join(app.getPath('userData'), 'stats.json');
+
+  function todayKey() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
+  function emptyDay() {
+    return {
+      visionCalls: 0,
+      visionOk: 0,
+      visionFail: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      playSeconds: 0,
+      tasksConfirmed: 0,
+    };
+  }
+
+  function readStats() {
+    try {
+      const f = STATS_FILE();
+      if (!fs.existsSync(f)) return { days: {} };
+      const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+      return s && typeof s === 'object' && s.days ? s : { days: {} };
+    } catch (e) {
+      return { days: {} };
+    }
+  }
+
+  function writeStats(s) {
+    try {
+      const f = STATS_FILE();
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify(s, null, 2), 'utf8');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  // delta: { visionCalls, visionOk, visionFail, promptTokens, completionTokens, playSeconds, tasksConfirmed }
+  function bumpStats(delta) {
+    const s = readStats();
+    const key = todayKey();
+    const day = Object.assign(emptyDay(), s.days[key] || {});
+    for (const k of Object.keys(delta || {})) {
+      if (typeof delta[k] === 'number' && k in day) day[k] += delta[k];
+    }
+    s.days[key] = day;
+    writeStats(s);
+    return day;
+  }
+
+  ipcMain.handle('stats:get', async () => {
+    const s = readStats();
+    const keys = Object.keys(s.days).sort().reverse().slice(0, 30);
+    const recent = {};
+    for (const k of keys) recent[k] = s.days[k];
+    return { ok: true, today: s.days[todayKey()] || emptyDay(), recent };
+  });
+
+  ipcMain.handle('stats:record', async (_e, delta) => ({ ok: true, day: bumpStats(delta || {}) }));
+
+  // 系统通知（异常需要人工时提醒）
+  ipcMain.handle('app:notify', async (_e, payload) => {
+    try {
+      if (!Notification.isSupported()) return { ok: false, error: 'NOT_SUPPORTED' };
+      const title = String((payload && payload.title) || '课程伴学工具');
+      const body = String((payload && payload.body) || '').slice(0, 200);
+      new Notification({ title, body }).show();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
     }
   });
 
@@ -871,7 +983,91 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(async () => {
+  // ---------------------------------------------------------------- 托盘
+// 收起主窗口后仍能在托盘里看到状态、暂停、结束。
+let tray = null;
+let trayTimer = null;
+let isQuitting = false;
+
+async function callRunner(method) {
+  const view = browser && browser.view;
+  if (!view || !view.webContents || view.webContents.isDestroyed()) return false;
+  try {
+    await view.webContents.executeJavaScript(
+      '(function(){var a=window.__cxNaturalWatchApp;if(a&&a.runner){try{a.runner.' + method + '();}catch(e){}}})()',
+      true
+    );
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function readRunnerLine() {
+  const view = browser && browser.view;
+  if (!view || !view.webContents || view.webContents.isDestroyed()) return '';
+  try {
+    return await view.webContents.executeJavaScript(
+      '(function(){' +
+        'var a=window.__cxNaturalWatchApp;' +
+        'if(!a||!a.runner)return "";' +
+        'try{var s=a.runner.snapshot();' +
+        'var label=s.stateLabel||s.state||"";' +
+        'var job=s.jobTitle?" · "+s.jobTitle:"";' +
+        'var v=s.video||{};' +
+        'var pct=v.duration>0?Math.round(((v.currentTime||0)/v.duration)*100)+"%":"";' +
+        'return label+job+(pct?" · "+pct:"");}catch(e){return "";}' +
+      '})()',
+      true
+    );
+  } catch (e) {
+    return '';
+  }
+}
+
+function rebuildTray(statusLine) {
+  if (!tray) return;
+  tray.setToolTip('课程伴学工具' + (statusLine ? '\n' + statusLine : ''));
+  const menu = Menu.buildFromTemplate([
+    { label: statusLine || '尚未进入课程', enabled: false },
+    { type: 'separator' },
+    { label: '显示主窗口', click: () => { if (win) { win.show(); win.focus(); } } },
+    { label: '暂停刷课', click: () => callRunner('pause') },
+    { label: '继续刷课', click: () => callRunner('resume') },
+    { label: '结束任务', click: () => callRunner('stop') },
+    { type: 'separator' },
+    { label: '退出程序', click: () => { isQuitting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(menu);
+}
+
+function createTray() {
+  try {
+    let img = null;
+    try {
+      const iconPath = path.join(__dirname, 'build', 'icon.ico');
+      if (fs.existsSync(iconPath)) img = nativeImage.createFromPath(iconPath);
+    } catch (e) {
+      img = null;
+    }
+    tray = new Tray(img && !img.isEmpty() ? img : nativeImage.createEmpty());
+    rebuildTray('');
+    tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
+    let lastLine = '';
+    trayTimer = setInterval(async () => {
+      const line = await readRunnerLine();
+      if (line && line !== lastLine) {
+        lastLine = line;
+        rebuildTray(line);
+      }
+    }, 3000);
+    bootLog('tray-created');
+  } catch (e) {
+    bootLog('tray-failed: ' + ((e && e.message) || e));
+  }
+}
+
+app.whenReady().then(async () => {
     bootLog('ready');
     loadStore();
     const userscript = loadUserscript();
@@ -879,6 +1075,7 @@ if (!gotLock) {
     injectCode = buildInjectCode(userscript);
     registerIpc();
     Menu.setApplicationMenu(null);
+    createTray();
     await createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) { closingWindow = false; createWindow().catch(fatalStartup); }
@@ -886,7 +1083,16 @@ if (!gotLock) {
   }).catch(fatalStartup);
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    // 有托盘时收进托盘继续运行；真正退出走托盘菜单
+    if (isQuitting && process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+    if (trayTimer) {
+      clearInterval(trayTimer);
+      trayTimer = null;
+    }
   });
 }
 

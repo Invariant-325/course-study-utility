@@ -81,6 +81,17 @@ async function pollRunner() {
   }
 
   const s = d.snap || {};
+  // 统计：播放时长按客户端观察累计；异常：按状态规则归类
+  try {
+    tickPlaytime(s);
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    pollIssues(s);
+  } catch (e) {
+    /* ignore */
+  }
   const state = s.state || 'idle';
   $('vState').textContent = STATE_TEXT[state] || s.stateLabel || state;
   $('vState').className =
@@ -677,6 +688,182 @@ function bindTasks() {
   }
 }
 
+// ---------------------------------------------------------------- 学习统计
+let lastConfirmed = 0;
+let playAccum = 0; // 累计未上报的播放秒数
+let lastTick = 0;
+
+function fmtDur(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return h + ' 小时 ' + m + ' 分';
+  if (m > 0) return m + ' 分 ' + (s % 60) + ' 秒';
+  return s + ' 秒';
+}
+
+async function pollStats() {
+  try {
+    const r = await App.statsGet();
+    if (!r || !r.ok) return;
+    const d = r.today || {};
+    if ($('stPlay')) $('stPlay').textContent = fmtDur(d.playSeconds);
+    if ($('stVision')) {
+      $('stVision').textContent = (d.visionCalls || 0) + ' 次' + (d.visionFail ? '（失败 ' + d.visionFail + '）' : '');
+    }
+    if ($('stToken')) {
+      const total = (d.promptTokens || 0) + (d.completionTokens || 0);
+      $('stToken').textContent = total + '（' + (d.promptTokens || 0) + ' + ' + (d.completionTokens || 0) + '）';
+    }
+    if ($('stConfirm')) $('stConfirm').textContent = String(d.tasksConfirmed || 0);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+// 播放时长按客户端观察累计，10 秒上报一次
+function tickPlaytime(snapshot) {
+  const now = Date.now();
+  const state = snapshot && snapshot.state;
+  const playing = state === 'playing' || state === 'settling' || state === 'awaitingConfirm';
+  if (lastTick && playing) {
+    playAccum += Math.min(10, (now - lastTick) / 1000);
+  }
+  lastTick = now;
+  if (playAccum >= 10) {
+    const delta = Math.floor(playAccum);
+    playAccum -= delta;
+    App.statsRecord({ playSeconds: delta }).catch(() => {});
+  }
+  // 平台确认数增量
+  const confirmed = Number(snapshot && snapshot.confirmedCount) || 0;
+  if (confirmed > lastConfirmed) {
+    const add = confirmed - lastConfirmed;
+    lastConfirmed = confirmed;
+    App.statsRecord({ tasksConfirmed: add }).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------- 异常与提醒
+const ISSUE_RULES = [
+  {
+    key: 'login',
+    test: (s) => s && (s.state === 'blocked' || s.state === 'needsReview') && /登录|login|401|auth/i.test(String(s.lastError || s.blockedReason || '')),
+    title: '登录状态可能失效',
+    fix: '在左侧页面重新登录，然后点「继续」',
+  },
+  {
+    key: 'stuck',
+    test: (s) => s && s.state === 'blocked' && /停滞|stall/i.test(String(s.lastError || '')),
+    fix: '点「暂停」再「继续」重试；若多次失败，刷新页面后重新进入学习页',
+    title: '视频播放卡住',
+  },
+  {
+    key: 'manual',
+    test: (s) => s && s.state === 'awaitingConfirm',
+    title: '等待人工确认',
+    fix: '平台未确认完成。可点「继续」重试，或「停止」跳过',
+  },
+  {
+    key: 'quizfail',
+    test: (s) => s && s.state === 'awaitingConfirm' && /测验|quiz/i.test(String(s.awaitingReason || s.noteReason || '')),
+    title: '题目无法自动完成',
+    fix: '核对答案后手动提交，再点「继续」',
+  },
+];
+
+let lastNotified = {};
+
+function renderIssues(list) {
+  const box = $('issueList');
+  if (!box) return;
+  box.textContent = '';
+  if (!list.length) {
+    const d = document.createElement('div');
+    d.className = 'issue ok';
+    const ic = document.createElement('span');
+    ic.className = 'ic';
+    ic.textContent = '✓';
+    const it = document.createElement('div');
+    it.className = 'it';
+    it.textContent = '当前没有需要处理的异常';
+    d.appendChild(ic);
+    d.appendChild(it);
+    box.appendChild(d);
+    return;
+  }
+  for (const issue of list) {
+    const d = document.createElement('div');
+    d.className = 'issue';
+    const ic = document.createElement('span');
+    ic.className = 'ic';
+    ic.textContent = '!';
+    const it = document.createElement('div');
+    it.className = 'it';
+    const t = document.createElement('div');
+    t.textContent = issue.title;
+    const f = document.createElement('div');
+    f.className = 'fix';
+    f.textContent = '处理：' + issue.fix;
+    it.appendChild(t);
+    it.appendChild(f);
+    d.appendChild(ic);
+    d.appendChild(it);
+    box.appendChild(d);
+  }
+}
+
+async function pollIssues(snapshot) {
+  const issues = [];
+  if (snapshot) {
+    for (const rule of ISSUE_RULES) {
+      try {
+        if (rule.test(snapshot)) issues.push({ key: rule.key, title: rule.title, fix: rule.fix });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+
+  // AI 侧：没配 Key 也要提示
+  try {
+    const s = await App.visionStatus();
+    if (s && !s.hasKey) {
+      issues.push({ key: 'nokey', title: '未配置 API Key', fix: '在「模型设置」里粘贴 Key 后测试连接' });
+    }
+  } catch (e) {
+    /* ignore */
+  }
+
+  renderIssues(issues);
+
+  // 「需要人工时暂停并通知」
+  const notifyOn = $('notifyOnManual') && $('notifyOnManual').checked;
+  if (notifyOn) {
+    for (const issue of issues) {
+      if (issue.key === 'nokey' || lastNotified[issue.key]) continue;
+      lastNotified[issue.key] = true;
+      try {
+        await App.notify({ title: '课程伴学工具 · ' + issue.title, body: issue.fix });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function bindIssues() {
+  const cb = $('notifyOnManual');
+  if (!cb) return;
+  cb.checked = cfgGet('notifyOnManual', false) === true;
+  cb.onchange = () => {
+    const on = cb.checked === true;
+    cfgSet('notifyOnManual', on);
+    if (!on) lastNotified = {};
+    log('异常通知：' + (on ? '已开启' : '已关闭'), on ? 'ok' : '');
+  };
+}
+
 // ---------------------------------------------------------------- 版本
 async function showVersion() {
   try {
@@ -717,9 +904,11 @@ function init() {
   bindNight();
   bindModel();
   bindTasks();
+  bindIssues();
   pollModel();
   pollOverview();
   loadTasks();
+  pollStats();
   pollPage();
   pollRunner();
   pollQuiz();
@@ -729,6 +918,7 @@ function init() {
   setInterval(pollQuiz, 4000);
   setInterval(pollModel, 20000);
   setInterval(pollOverview, 5000);
+  setInterval(pollStats, 10000);
 }
 
 init();

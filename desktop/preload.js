@@ -43,6 +43,11 @@ if (isAppUi) {
     tasksRemove: (id) => ipcRenderer.invoke('tasks:remove', id),
     tasksSave: (list) => ipcRenderer.invoke('tasks:save', list),
 
+    // 统计与通知
+    statsGet: () => ipcRenderer.invoke('stats:get'),
+    statsRecord: (delta) => ipcRenderer.invoke('stats:record', delta),
+    notify: (payload) => ipcRenderer.invoke('app:notify', payload),
+
     // 运行状态（页面/标题）
     pageInfo: () => ipcRenderer.invoke('web:info'),
     appInfo: () => ipcRenderer.invoke('app:info'),

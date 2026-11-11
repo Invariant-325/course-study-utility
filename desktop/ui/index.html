@@ -71,6 +71,13 @@
     border-radius: 6px; font-size: 10px; padding: 2px 4px; }
   .taskitem button { background: #1e2733; color: #8b98ad; border: 1px solid #2c3849;
     border-radius: 6px; padding: 2px 6px; font-size: 10px; cursor: pointer; }
+  .issue { display: flex; gap: 6px; align-items: flex-start; background: #2a1f12;
+    border: 1px solid #4a3a1a; border-radius: 8px; padding: 7px 9px; margin-top: 7px; font-size: 11px;
+    color: #f0b429; line-height: 1.5; }
+  .issue .ic { flex: 0 0 auto; }
+  .issue .it { flex: 1; }
+  .issue .fix { color: #cbd5e1; font-size: 10px; margin-top: 2px; }
+  .issue.ok { background: #12351f; border-color: #1d4d2c; color: #4ade80; }
   .qitem { background: #131a26; border: 1px solid #232c3a; border-radius: 8px; padding: 7px 9px;
     margin-bottom: 6px; font-size: 12px; }
   .qitem .qh { color: #8ba3c7; }
@@ -139,6 +146,27 @@
       </div>
       <div id="taskList"></div>
       <div class="msg" id="taskMsg"></div>
+    </div>
+
+    <div class="card">
+      <h4>学习统计（今日）</h4>
+      <div class="row"><span>播放时长</span><b id="stPlay">—</b></div>
+      <div class="row"><span>识别次数</span><b id="stVision">—</b></div>
+      <div class="row"><span>Token</span><b id="stToken">—</b></div>
+      <div class="row"><span>平台确认</span><b id="stConfirm">—</b></div>
+      <div class="stat" style="font-size:10px;color:#6f7d93;margin-top:6px">
+        播放与识别是本机观察值；「平台确认」只统计平台返回的完成数，不推断
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>异常与提醒</h4>
+      <label class="check">
+        <input type="checkbox" id="notifyOnManual" />
+        <span>需要人工处理时暂停任务并弹系统通知</span>
+      </label>
+      <div id="issueList"></div>
+      <div class="msg" id="issueMsg"></div>
     </div>
 
     <div class="card">
