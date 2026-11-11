@@ -526,6 +526,89 @@ function registerIpc() {
   });
   ipcMain.handle('web:info', () => browser ? browser.info() : { url: '', title: '' });
   ipcMain.handle('web:home', () => browser ? browser.home() : { ok: false });
+
+  // ---------------- 夜间静默模式 ----------------
+  // 需求：确认后 30 秒关闭显示屏 + 静音，进入无人监管刷课。
+  // 关屏用 WM_SYSCOMMAND/SC_MONITORPOWER；静音只作用于网页音频，不改系统音量，
+  // 避免影响用户其他程序。任何一步失败都如实回报，不假装成功。
+  let nightTimer = null;
+  let nightState = { pending: false, active: false, executeAt: 0, error: '' };
+
+  function setAppMuted(muted) {
+    try {
+      const view = browser && browser.view;
+      if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, error: 'no-view' };
+      view.webContents.setAudioMuted(!!muted);
+      return { ok: true, muted: !!muted };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message) };
+    }
+  }
+
+  function turnOffMonitor() {
+    return new Promise((resolve) => {
+      const script = [
+        'Add-Type -Namespace CxNight -Name Display -MemberDefinition @\'',
+        '[DllImport("user32.dll")]',
+        'public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);',
+        '\'@',
+        '$r = [CxNight.Display]::SendMessage([IntPtr]0xffff, 0x0112, [IntPtr]0xF170, [IntPtr]2)',
+        'Write-Output ("SENT:" + $r)',
+      ].join('\n');
+      try {
+        const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let out = '';
+        let err = '';
+        child.stdout.on('data', (d) => { out += d.toString(); });
+        child.stderr.on('data', (d) => { err += d.toString(); });
+        child.on('error', (e) => resolve({ ok: false, error: String(e && e.message) }));
+        child.on('exit', (code) => {
+          if (code === 0) resolve({ ok: true, out: out.trim() });
+          else resolve({ ok: false, error: 'powershell exit ' + code + ' ' + err.slice(0, 200) });
+        });
+        setTimeout(() => { try { child.kill(); } catch (e) {} resolve({ ok: false, error: 'timeout' }); }, 8000);
+      } catch (e) {
+        resolve({ ok: false, error: String(e && e.message) });
+      }
+    });
+  }
+
+  ipcMain.handle('night:schedule', async (_e, delayMs) => {
+    if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
+    const wait = Math.max(0, Number(delayMs) || 30000);
+    nightState = { pending: true, active: false, executeAt: Date.now() + wait, error: '' };
+    bootLog('[night] scheduled in ' + Math.round(wait / 1000) + 's');
+    nightTimer = setTimeout(async () => {
+      nightTimer = null;
+      const mute = setAppMuted(true);
+      const monitor = await turnOffMonitor();
+      nightState = {
+        pending: false,
+        active: true,
+        executeAt: nightState.executeAt,
+        error: [mute.ok ? '' : 'mute:' + mute.error, monitor.ok ? '' : 'monitor:' + monitor.error].filter(Boolean).join(';'),
+      };
+      bootLog('[night] executed mute=' + mute.ok + ' monitor=' + monitor.ok + ' err=' + nightState.error);
+      if (win && !win.isDestroyed()) win.webContents.send('night:changed', nightState);
+    }, wait);
+    return { ok: true, pending: true, executeAt: nightState.executeAt };
+  });
+
+  ipcMain.handle('night:cancel', async () => {
+    if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
+    setAppMuted(false);
+    nightState = { pending: false, active: false, executeAt: 0, error: '' };
+    bootLog('[night] cancelled');
+    if (win && !win.isDestroyed()) win.webContents.send('night:changed', nightState);
+    return { ok: true };
+  });
+
+  ipcMain.handle('night:status', async () => nightState);
+
+  ipcMain.handle('app:setMuted', async (_e, muted) => setAppMuted(muted));
 }
 
 // ---------------------------------------------------------------- 启动

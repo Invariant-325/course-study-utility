@@ -24,6 +24,12 @@
   .big.green { background: #16a34a; }
   .big.green:hover { background: #128a3e; }
   .big.gray { background: #334155; }
+  .big.dark { background: #312e81; }
+  .big.dark:hover { background: #262264; }
+  .big.dark.on { background: #b45309; }
+  .check { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
+    font-size: 12px; color: #a7b3c7; line-height: 1.45; cursor: pointer; }
+  .check input { margin-top: 2px; flex: 0 0 auto; accent-color: #2563eb; }
   .row2 { display: flex; gap: 8px; margin-top: 10px; }
   .row2 button { flex: 1; padding: 10px 0; border-radius: 8px; border: 1px solid #2c3849;
     background: #1e2733; color: #cdd6e4; cursor: pointer; font-size: 13px; }
@@ -89,10 +95,27 @@
         <button id="vPause">暂停</button>
         <button id="vStop">停止</button>
       </div>
+      <label class="check" id="autoQuizRow">
+        <input type="checkbox" id="autoQuiz" />
+        <span>自动做题（本节视频播完后先做本章测验再继续）</span>
+      </label>
     </div>
 
     <div class="card">
-      <h4>章节测验（自动答题）</h4>
+      <h4>夜间静默</h4>
+      <div class="stat" id="nightInfo">关闭显示屏与声音，无人监管继续刷课</div>
+      <div style="margin-top:10px">
+        <button class="big dark" id="nightBtn">开启夜间模式</button>
+      </div>
+      <label class="check">
+        <input type="checkbox" id="nightAutoSubmit" />
+        <span>夜间模式下自动提交测验（开启夜间时自动勾选）</span>
+      </label>
+      <div class="msg" id="nightMsg"></div>
+    </div>
+
+    <div class="card">
+      <h4>章节测验（手动）</h4>
       <div class="stat" id="qInfo">请打开章节测验页面</div>
       <div style="margin-top:10px">
         <button class="big green" id="qAuto">一键识别并填写</button>

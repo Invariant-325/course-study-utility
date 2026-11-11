@@ -158,8 +158,14 @@ const Config = (function () {
     visionTimeoutMs: 130000,
 
     // ---- 章节测验闸门：本节视频播完后先做本节测验，再切下一节 ----
-    quizGateEnabled: true,
+    // 默认关闭：只在用户按下「自动做题」后才处理章节测验；
+    // 视频播放中弹出的题目不受此开关影响，仍会自动作答（否则无法继续播放）。
+    quizGateEnabled: false,
     quizPageTimeoutMs: 20000,
+
+    // 测验完成后是否自动点「提交」（并处理平台二次确认弹窗）。
+    // 默认关闭；开启夜间模式时会被自动打开。
+    quizAutoSubmit: false,
   };
 
   function hasGM() {
@@ -3126,7 +3132,8 @@ const Runner = (function () {
     let result = null;
     try {
       result = await ChapterQuizRunner.runAuto({
-        submit: true,
+        // 是否自动提交由配置决定；不勾选时只填写，等人工提交
+        submit: Config.get('quizAutoSubmit') === true,
         force: false,
         confirmTimeoutMs: 8000,
       });
@@ -3139,6 +3146,12 @@ const Runner = (function () {
     if (!result || !result.ok) {
       const why = result ? (result.phase || '') + ' ' + (result.error || '') : '无返回';
       enterQuizManual('本章测验自动完成失败（' + why + '），请手动完成后点「继续」');
+      return 'blocked';
+    }
+
+    // 只填写未提交：测验在平台侧仍未完成，不能放行到下一节，否则下一轮会重复进来
+    if (result.phase === 'filled') {
+      enterQuizManual('本章测验已填写但未提交（自动提交未开启）。请核对答案并在页面点「提交」，然后点「继续」');
       return 'blocked';
     }
 

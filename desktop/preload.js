@@ -34,6 +34,23 @@ if (isAppUi) {
     pageInfo: () => ipcRenderer.invoke('web:info'),
     appInfo: () => ipcRenderer.invoke('app:info'),
 
+    // 夜间静默模式
+    nightSchedule: (delayMs) => ipcRenderer.invoke('night:schedule', delayMs),
+    nightCancel: () => ipcRenderer.invoke('night:cancel'),
+    nightStatus: () => ipcRenderer.invoke('night:status'),
+    setMuted: (muted) => ipcRenderer.invoke('app:setMuted', muted),
+    onNight: (cb) => {
+      const handler = (_e, state) => {
+        try {
+          cb(state);
+        } catch (err) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on('night:changed', handler);
+      return () => ipcRenderer.removeListener('night:changed', handler);
+    },
+
     // KV（面板保存设置）
     kvGet: (key, fallback) => {
       try {

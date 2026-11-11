@@ -287,6 +287,163 @@ async function pollPage() {
   }
 }
 
+// ---------------------------------------------------------------- 配置读写
+// 用户脚本的 Config 把值存在 kv 的 "cxNaturalWatch:cfg.<key>" 下，且是 JSON 字符串。
+// 面板直接按同样格式读写，保证两边看到的是同一份配置。
+const CFG_PREFIX = 'cxNaturalWatch:cfg.';
+
+function cfgKey(key) {
+  return CFG_PREFIX + key;
+}
+
+function cfgGet(key, fallback) {
+  try {
+    const raw = App.kvGet(cfgKey(key), null);
+    if (raw === null || raw === undefined) return fallback;
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function cfgSet(key, value) {
+  try {
+    App.kvSet(cfgKey(key), JSON.stringify(value));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------- 自动做题 / 自动提交
+function bindQuizToggles() {
+  const autoQuiz = $('autoQuiz');
+  const autoSubmit = $('nightAutoSubmit');
+
+  if (autoQuiz) {
+    autoQuiz.checked = cfgGet('quizGateEnabled', false) === true;
+    autoQuiz.onchange = () => {
+      const on = autoQuiz.checked === true;
+      cfgSet('quizGateEnabled', on);
+      log('自动做题：' + (on ? '已开启（本节视频播完先做本章测验）' : '已关闭（只刷视频，跳过章节测验）'), on ? 'ok' : '');
+    };
+  }
+
+  if (autoSubmit) {
+    autoSubmit.checked = cfgGet('quizAutoSubmit', false) === true;
+    autoSubmit.onchange = () => {
+      const on = autoSubmit.checked === true;
+      cfgSet('quizAutoSubmit', on);
+      log('自动提交：' + (on ? '已开启' : '已关闭（只填写，等你手动提交）'), on ? 'ok' : '');
+    };
+  }
+}
+
+// ---------------------------------------------------------------- 夜间静默模式
+const NIGHT_DELAY_MS = 30000;
+let nightCountdownTimer = null;
+let nightRunning = false;
+
+function nightButtonText() {
+  return nightRunning ? '退出夜间模式' : '开启夜间模式';
+}
+
+function stopCountdown() {
+  if (nightCountdownTimer) {
+    clearInterval(nightCountdownTimer);
+    nightCountdownTimer = null;
+  }
+}
+
+function startCountdown(untilMs) {
+  stopCountdown();
+  const btn = $('nightBtn');
+  const info = $('nightInfo');
+  nightCountdownTimer = setInterval(() => {
+    const left = Math.max(0, Math.ceil((untilMs - Date.now()) / 1000));
+    if (left <= 0) {
+      stopCountdown();
+      if (info) info.textContent = '已进入夜间静默：网页静音 + 显示器即将关闭';
+      return;
+    }
+    if (btn) btn.textContent = '取消（' + left + ' 秒后关屏）';
+    if (info) info.textContent = '倒计时中：' + left + ' 秒后关闭显示器并静音';
+  }, 250);
+}
+
+function markNightActive(active) {
+  nightRunning = active;
+  const btn = $('nightBtn');
+  if (btn) {
+    btn.textContent = nightButtonText();
+    btn.className = 'big dark' + (active ? ' on' : '');
+  }
+}
+
+async function enterNight() {
+  const ok = window.confirm(
+    '开启夜间模式后会立即做两件事：\n\n' +
+      '1) 把网页静音（不改系统音量）\n' +
+      '2) 30 秒后关闭显示器\n\n' +
+      '同时会自动勾选「自动做题」和「自动提交」，实现无人监管刷课。\n' +
+      '想取消，在 30 秒内点「取消（N 秒后关屏）」。\n\n' +
+      '继续？'
+  );
+  if (!ok) return;
+
+  // 夜间模式 = 全自动：自动做题 + 自动提交
+  cfgSet('quizGateEnabled', true);
+  cfgSet('quizAutoSubmit', true);
+  if ($('autoQuiz')) $('autoQuiz').checked = true;
+  if ($('nightAutoSubmit')) $('nightAutoSubmit').checked = true;
+
+  const r = await App.nightSchedule(NIGHT_DELAY_MS);
+  if (!r || !r.ok) {
+    msg('nightMsg', '夜间模式启动失败：' + errText(r), 'err');
+    return;
+  }
+
+  markNightActive(true);
+  startCountdown(r.executeAt || Date.now() + NIGHT_DELAY_MS);
+  msg('nightMsg', '已安排：30 秒后关闭显示器并静音。倒计时内可取消。', 'info');
+  log('夜间模式已安排，30 秒后执行', 'ok');
+}
+
+async function exitNight() {
+  stopCountdown();
+  const r = await App.nightCancel();
+  markNightActive(false);
+  const info = $('nightInfo');
+  if (info) info.textContent = '关闭显示屏与声音，无人监管继续刷课';
+  msg('nightMsg', r && r.ok ? '已退出夜间模式（网页已取消静音）' : '退出时出错：' + errText(r), r && r.ok ? 'ok' : 'err');
+  log('已退出夜间模式', '');
+}
+
+function bindNight() {
+  const btn = $('nightBtn');
+  if (!btn) return;
+  markNightActive(false);
+  btn.onclick = () => {
+    if (nightRunning) exitNight();
+    else enterNight();
+  };
+
+  if (App.onNight) {
+    App.onNight((state) => {
+      if (state && state.active) {
+        if (state.error) {
+          msg('nightMsg', '部分步骤失败：' + state.error, 'err');
+          log('夜间模式部分失败：' + state.error, 'err');
+        } else {
+          msg('nightMsg', '已进入夜间静默：网页静音，显示器已关闭', 'ok');
+        }
+        markNightActive(true);
+        stopCountdown();
+      }
+    });
+  }
+}
+
 // ---------------------------------------------------------------- 版本
 async function showVersion() {
   try {
@@ -323,6 +480,8 @@ function init() {
 
   showVersion();
   bindUpdate();
+  bindQuizToggles();
+  bindNight();
   pollEnv();
   pollPage();
   pollRunner();

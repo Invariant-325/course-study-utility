@@ -55,8 +55,14 @@ const Config = (function () {
     visionTimeoutMs: 130000,
 
     // ---- 章节测验闸门：本节视频播完后先做本节测验，再切下一节 ----
-    quizGateEnabled: true,
+    // 默认关闭：只在用户按下「自动做题」后才处理章节测验；
+    // 视频播放中弹出的题目不受此开关影响，仍会自动作答（否则无法继续播放）。
+    quizGateEnabled: false,
     quizPageTimeoutMs: 20000,
+
+    // 测验完成后是否自动点「提交」（并处理平台二次确认弹窗）。
+    // 默认关闭；开启夜间模式时会被自动打开。
+    quizAutoSubmit: false,
   };
 
   function hasGM() {

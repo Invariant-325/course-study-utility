@@ -6,7 +6,10 @@ const files=['10-log.js','20-config.js','30-selectors.js','35-urls.js','40-dom.j
 for (const onQuizPage of [false,true]) {
   test(onQuizPage ? '章节测验识别失败后进入人工确认' : '章节测验找不到入口后进入人工确认', async()=>{
     const env=loadEnv(files);
-    const {CourseTree,Runner}=env.exports;
+    const {CourseTree,Runner,Config}=env.exports;
+    // 闸门默认已改为关闭（由面板「自动做题」开关控制），这里显式打开以覆盖闸门行为
+    Config.load();
+    Config.set('quizGateEnabled',true);
     const work={id:'work-qa',stableKey:'qa/work',type:'work',state:'unfinished',title:'fixture quiz'};
     CourseTree.enumerateDetail=()=>({jobs:[work],inaccessible:[],documents:[{doc:env.document}],stats:{unfinished:1,finished:0,unknown:0,documentCount:1}});
     CourseTree.pickNextVideoTarget=()=>({job:null});

@@ -1,6 +1,6 @@
 {
   "name": "course-study-utility",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "description": "兼容学习通（超星平台）的个人第三方课程辅助工具，包含任务跟踪与AI视觉识题作答，非官方产品。",
   "main": "main.js",
@@ -47,7 +47,7 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
@@ -56,7 +56,7 @@
       "deleteAppDataOnUninstall": false,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "allowElevation": false,
+      "allowElevation": true,
       "installerLanguages": [
         "zh_CN",
         "en_US"
