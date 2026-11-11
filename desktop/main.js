@@ -63,6 +63,10 @@ process.on('unhandledRejection', (e) => {
 });
 bootLog('boot; version=' + app.getVersion() + '; electron=' + process.versions.electron);
 
+// 退出标志必须在任何 close 处理器之前声明：
+// 之前写在文件末尾，窗口关闭时命中 TDZ 直接抛 ReferenceError。
+let isQuitting = false;
+
 let win = null;
 let browser = null;
 let loginSession = null;
@@ -191,8 +195,14 @@ async function createWindow() {
   const persist = session.fromPartition('persist:chaoxing');
   loginSession = await retainLogin(persist, app.getPath('userData'), safeStorage, bootLog);
   win = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 960, minHeight: 640,
-    title: '课程伴学工具', backgroundColor: '#0f1218', autoHideMenuBar: true,
+    width: 1440, height: 900, minWidth: 1080, minHeight: 680,
+    title: '课程伴学工具',
+    // 只隐藏标题栏，保留系统窗口边框：标题栏由页面自绘。
+    // 不用 frame:false —— 它和 backgroundMaterial:'mica' 同时出现会让窗口创建失败。
+    titleBarStyle: 'hidden',
+    backgroundMaterial: 'mica',
+    backgroundColor: '#00000000',
+    autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
@@ -787,6 +797,16 @@ function registerIpc() {
   ipcMain.handle('web:info', () => browser ? browser.info() : { url: '', title: '' });
   ipcMain.handle('web:home', () => browser ? browser.home() : { ok: false });
 
+  // 网页视图显示/隐藏：默认隐藏，只在本机 UI 里按需切换
+  ipcMain.handle('web:toggle', async (_e, force) => {
+    if (!browser) return { ok: false, visible: false };
+    const next = typeof force === 'boolean' ? force : !browser.isVisible();
+    browser.setVisible(next);
+    return { ok: true, visible: next };
+  });
+
+  ipcMain.handle('web:visible', async () => ({ ok: true, visible: browser ? browser.isVisible() : false }));
+
   // ---------------- 课程总览（仪表盘）----------------
   // 只读：章节列表、待完成数、最近学习记录。不改页面，不推断完成。
   ipcMain.handle('course:overview', async () => {
@@ -987,7 +1007,6 @@ if (!gotLock) {
 // 收起主窗口后仍能在托盘里看到状态、暂停、结束。
 let tray = null;
 let trayTimer = null;
-let isQuitting = false;
 
 async function callRunner(method) {
   const view = browser && browser.view;

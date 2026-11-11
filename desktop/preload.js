@@ -20,6 +20,9 @@ if (isAppUi) {
   contextBridge.exposeInMainWorld('__cxApp', {
     // 网页控制
     goto: (url) => ipcRenderer.invoke('web:goto', url),
+    toggleWeb: (force) => ipcRenderer.invoke('web:toggle', force),
+    webVisible: () => ipcRenderer.invoke('web:visible'),
+
     home: () => ipcRenderer.invoke('web:home'),
     reload: () => ipcRenderer.invoke('web:reload'),
     back: () => ipcRenderer.invoke('web:back'),

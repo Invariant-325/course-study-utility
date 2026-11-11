@@ -1,0 +1,590 @@
+/* ===========================================================================
+   pages.css —— 四个页面的专属布局
+   =========================================================================== */
+
+/* ---------------------------------------------------------------- 仪表盘 */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 148px;
+}
+
+.course-card .cc-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.course-card .cc-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--md-sys-shape-medium);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  /* 中性底：参考 DSH，图标不做彩色块，强调色只留给进度条和选中态 */
+  background: var(--md-sys-color-surfaceContainerHighest);
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.course-card .cc-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.course-card .cc-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.course-card .cc-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+.course-card .cc-foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.course-card .cc-foot .progress {
+  flex: 1;
+}
+
+.course-card .cc-pct {
+  font-size: var(--md-sys-typescale-label-medium-size);
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+/* 顶部统计条 */
+.statstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.statcell {
+  padding: 14px 16px;
+  border-radius: var(--md-sys-shape-medium);
+  background: var(--md-sys-color-surfaceContainerLow);
+}
+
+.statcell .sv {
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.statcell .sl {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------- 课程工作区 */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 当前播放面板 */
+.now-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--md-sys-shape-large);
+  background: var(--md-sys-color-surfaceContainerLow);
+}
+
+.now-bar .nb-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.now-bar .nb-state {
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: 600;
+  color: var(--md-sys-color-onSurface);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.now-bar .nb-sub {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态呼吸点 */
+.pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-primary);
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.pulse[data-live='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: pulse 1.8s var(--md-sys-motion-easing-emphasized) infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 章节列表 */
+.chapterlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.chapter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: var(--md-sys-shape-small);
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.chapter:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 5%, transparent);
+}
+
+.chapter[data-current='true'] {
+  background: var(--md-sys-color-secondaryContainer);
+  color: var(--md-sys-color-onSecondaryContainer);
+}
+
+.chapter .ch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--md-sys-shape-full);
+  flex: 0 0 auto;
+  background: var(--md-sys-color-outlineVariant);
+}
+
+.chapter[data-state='done'] .ch-dot {
+  background: #16a34a;
+}
+
+.chapter[data-state='doing'] .ch-dot {
+  background: var(--md-sys-color-primary);
+}
+
+.chapter[data-state='manual'] .ch-dot {
+  background: #d97706;
+}
+
+.chapter .ch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+.chapter .ch-count {
+  font-size: var(--md-sys-typescale-label-small-size);
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+/* 侧栏卡片 */
+.side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 任务队列 */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-medium);
+  background: var(--md-sys-color-surfaceContainerLow);
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.queue-item:hover {
+  background: var(--md-sys-color-surfaceContainer);
+}
+
+.queue-item .qi-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-item .qi-name {
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-item .qi-sub {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  margin-top: 2px;
+}
+
+/* 异常条目 */
+.issue-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--md-sys-shape-medium);
+  background: color-mix(in oklab, #d97706 12%, var(--md-sys-color-surfaceContainerLow));
+  margin-top: 8px;
+}
+
+.issue-item[data-kind='error'] {
+  background: color-mix(in oklab, var(--md-sys-color-error) 14%, var(--md-sys-color-surfaceContainerLow));
+}
+
+.issue-item .ii-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.issue-item .ii-title {
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: 600;
+  color: var(--md-sys-color-onSurface);
+}
+
+.issue-item .ii-fix {
+  font-size: var(--md-sys-typescale-body-small-size);
+  color: var(--md-sys-color-onSurfaceVariant);
+  margin-top: 3px;
+}
+
+/* 空状态 */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.empty .em-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--md-sys-shape-large);
+  display: grid;
+  place-items: center;
+  background: var(--md-sys-color-surfaceContainerHigh);
+}
+
+.empty .em-ico svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--md-sys-color-onSurfaceVariant);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- 模型配置 */
+.settings-wrap {
+  max-width: 720px;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-section > .sec-title {
+  color: var(--md-sys-color-primary);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-bottom: 10px;
+  padding-left: 2px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+}
+
+.setting-row .sr-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-row .sr-title {
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-body-large-size);
+}
+
+.setting-row .sr-sub {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  margin-top: 3px;
+  max-width: 52ch;
+}
+
+/* 种子色选择器 */
+.seedrow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.seeddot {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--md-sys-shape-full);
+  border: 0;
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring);
+}
+
+.seeddot:hover {
+  transform: scale(1.1);
+}
+
+.seeddot[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--md-sys-color-onSurface);
+}
+
+/* 主题预览卡片：展示 tonal palette */
+.palette-strip {
+  display: flex;
+  border-radius: var(--md-sys-shape-small);
+  overflow: hidden;
+  height: 44px;
+  margin-top: 10px;
+}
+
+.palette-strip > i {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------- 日志 */
+.logwrap {
+  border-radius: var(--md-sys-shape-large);
+  background: var(--md-sys-color-surfaceContainerLowest);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 220px);
+  min-height: 320px;
+}
+
+[data-mica='dark'] .logwrap {
+  background: color-mix(in oklab, #000 22%, var(--md-sys-color-surfaceContainerLowest));
+}
+
+.logbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--md-sys-color-outlineVariant);
+}
+
+.logbar .lbtitle {
+  flex: 1;
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: 600;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.loglist {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  font-family: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.75;
+  user-select: text;
+}
+
+.logline {
+  display: flex;
+  gap: 10px;
+  padding: 1px 0;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.logline .lt {
+  color: color-mix(in oklab, var(--md-sys-color-onSurfaceVariant) 62%, transparent);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.logline .lm {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.logline[data-level='info'] .lm {
+  color: var(--md-sys-color-onSurface);
+}
+.logline[data-level='ok'] .lm {
+  color: color-mix(in oklab, #16a34a 80%, var(--md-sys-color-onSurface));
+}
+.logline[data-level='warn'] .lm {
+  color: color-mix(in oklab, #d97706 85%, var(--md-sys-color-onSurface));
+}
+.logline[data-level='error'] .lm {
+  color: var(--md-sys-color-error);
+}
+
+/* ---------------------------------------------------------------- 工作区标签栏（借鉴 DSH 的下划线 tab） */
+.wktabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0 0 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 65%, transparent);
+}
+
+.wktab {
+  position: relative;
+  height: 36px;
+  padding: 0 12px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.wktab:hover {
+  color: var(--md-sys-color-onSurface);
+}
+
+.wktab[aria-selected='true'] {
+  color: var(--md-sys-color-primary);
+  font-weight: 550;
+}
+
+.wktab::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--md-sys-color-primary);
+  transform: scaleX(0);
+  transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+}
+
+.wktab[aria-selected='true']::after {
+  transform: scaleX(1);
+}
+
+.wktab-fill {
+  flex: 1;
+}
+
+.wktab-meta {
+  padding-bottom: 9px;
+  font-size: 11.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-variant-numeric: tabular-nums;
+}
+/* 右栏底部给 FAB 让位 */
+.side-stack {
+  padding-bottom: 72px;
+}
