@@ -35,6 +35,14 @@ if (isAppUi) {
     clearModelKey: () => ipcRenderer.invoke('model:clearKey'),
     testModel: () => ipcRenderer.invoke('model:test'),
 
+    // 课程总览与待办队列
+    courseOverview: () => ipcRenderer.invoke('course:overview'),
+    tasksList: () => ipcRenderer.invoke('tasks:list'),
+    tasksAdd: (task) => ipcRenderer.invoke('tasks:add', task),
+    tasksUpdate: (id, patch) => ipcRenderer.invoke('tasks:update', id, patch),
+    tasksRemove: (id) => ipcRenderer.invoke('tasks:remove', id),
+    tasksSave: (list) => ipcRenderer.invoke('tasks:save', list),
+
     // 运行状态（页面/标题）
     pageInfo: () => ipcRenderer.invoke('web:info'),
     appInfo: () => ipcRenderer.invoke('app:info'),

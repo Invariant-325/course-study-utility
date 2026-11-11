@@ -1,8 +1,5 @@
 {
-  "version": "0.2.0-beta.1",
-  "label": "beta1",
-  "buildVersion": "0.2.0",
+  "version": "0.2.0-beta.2",
   "prerelease": true,
-  "featuresComplete": false,
-  "originalInstallerSHA256": "4dae077dae645429d1cf316cd338cb601b69ab2637f937d401c14e2bf7720fe8"
+  "series": "0.2.0 Beta"
 }

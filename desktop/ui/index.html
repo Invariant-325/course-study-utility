@@ -53,6 +53,24 @@
   .msg.err { background: #3a1d1d; color: #f28b82; }
   .msg.info { background: #17223a; color: #9fb4d4; }
   #qList { margin-top: 8px; max-height: 260px; overflow-y: auto; }
+  #ovList { max-height: 200px; overflow-y: auto; margin-top: 6px; }
+  .ovitem { font-size: 11px; padding: 4px 6px; border-radius: 6px; background: #131a26;
+    border: 1px solid #232c3a; margin-bottom: 4px; color: #a8b5c9; }
+  .ovitem .pend { color: #f0b429; margin-left: 6px; }
+  .taskitem { display: flex; align-items: center; gap: 6px; background: #131a26;
+    border: 1px solid #232c3a; border-radius: 8px; padding: 7px 8px; margin-bottom: 6px; font-size: 11px; }
+  .taskitem .tt { flex: 1; min-width: 0; }
+  .taskitem .tt .name { color: #d6e0ef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .taskitem .tt .sub { color: #6f7d93; font-size: 10px; }
+  .badge2 { flex: 0 0 auto; padding: 2px 7px; border-radius: 9px; font-size: 10px; }
+  .badge2.todo { background: #24303f; color: #9fb4d4; }
+  .badge2.doing { background: #1e3a5f; color: #6ea8fe; }
+  .badge2.done { background: #12351f; color: #4ade80; }
+  .badge2.manual { background: #3a2a12; color: #f0b429; }
+  .taskitem select { background: #1e2733; color: #cdd6e4; border: 1px solid #2c3849;
+    border-radius: 6px; font-size: 10px; padding: 2px 4px; }
+  .taskitem button { background: #1e2733; color: #8b98ad; border: 1px solid #2c3849;
+    border-radius: 6px; padding: 2px 6px; font-size: 10px; cursor: pointer; }
   .qitem { background: #131a26; border: 1px solid #232c3a; border-radius: 8px; padding: 7px 9px;
     margin-bottom: 6px; font-size: 12px; }
   .qitem .qh { color: #8ba3c7; }
@@ -99,10 +117,28 @@
         <button id="vPause">暂停</button>
         <button id="vStop">停止</button>
       </div>
-      <label class="check" id="autoQuizRow">
-        <input type="checkbox" id="autoQuiz" />
-        <span>自动做题（本节视频播完后先做本章测验再继续）</span>
-      </label>
+    </div>
+
+    <div class="card">
+      <h4>课程总览</h4>
+      <div class="row"><span>章节数</span><b id="ovCount">—</b></div>
+      <div class="row"><span>待完成</span><b id="ovPending">—</b></div>
+      <div class="row"><span>最近学习</span><b id="ovLast">—</b></div>
+      <details>
+        <summary>展开章节列表（<span id="ovLen">0</span>）</summary>
+        <div id="ovList"></div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h4>待办任务</h4>
+      <div class="stat" id="taskInfo">尚未建立任务</div>
+      <div class="row2">
+        <button class="primary" id="taskImport">从当前课程导入</button>
+        <button id="taskClean">清理已完成</button>
+      </div>
+      <div id="taskList"></div>
+      <div class="msg" id="taskMsg"></div>
     </div>
 
     <div class="card">
@@ -111,16 +147,23 @@
       <div style="margin-top:10px">
         <button class="big dark" id="nightBtn">开启夜间模式</button>
       </div>
-      <label class="check">
-        <input type="checkbox" id="nightAutoSubmit" />
-        <span>夜间模式下自动提交测验（开启夜间时自动勾选）</span>
-      </label>
+      <div class="stat" style="margin-top:8px;font-size:11px;color:#6f7d93">
+        夜间模式 = 自动做题 + 自动提交，开启后无需再单独设置
+      </div>
       <div class="msg" id="nightMsg"></div>
     </div>
 
     <div class="card">
-      <h4>章节测验（手动）</h4>
+      <h4>章节测验</h4>
       <div class="stat" id="qInfo">请打开章节测验页面</div>
+      <label class="check">
+        <input type="checkbox" id="autoQuiz" />
+        <span><b>自动做题</b>：本节视频播完后先做本章测验，再继续下一节</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="autoSubmit" />
+        <span><b>自动提交</b>：填完自动点提交并确认弹窗（关闭时只填写，等你核对后手动提交）</span>
+      </label>
       <div style="margin-top:10px">
         <button class="big green" id="qAuto">一键识别并填写</button>
       </div>

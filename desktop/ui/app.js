@@ -306,7 +306,7 @@ function cfgSet(key, value) {
 // ---------------------------------------------------------------- 自动做题 / 自动提交
 function bindQuizToggles() {
   const autoQuiz = $('autoQuiz');
-  const autoSubmit = $('nightAutoSubmit');
+  const autoSubmit = $('autoSubmit');
 
   if (autoQuiz) {
     autoQuiz.checked = cfgGet('quizGateEnabled', false) === true;
@@ -325,6 +325,14 @@ function bindQuizToggles() {
       log('自动提交：' + (on ? '已开启' : '已关闭（只填写，等你手动提交）'), on ? 'ok' : '');
     };
   }
+}
+
+// 夜间模式是"全自动"，直接把两个开关打开，不需要额外勾选
+function setQuizFullyAuto() {
+  cfgSet('quizGateEnabled', true);
+  cfgSet('quizAutoSubmit', true);
+  if ($('autoQuiz')) $('autoQuiz').checked = true;
+  if ($('autoSubmit')) $('autoSubmit').checked = true;
 }
 
 // ---------------------------------------------------------------- 夜间静默模式
@@ -379,11 +387,8 @@ async function enterNight() {
   );
   if (!ok) return;
 
-  // 夜间模式 = 全自动：自动做题 + 自动提交
-  cfgSet('quizGateEnabled', true);
-  cfgSet('quizAutoSubmit', true);
-  if ($('autoQuiz')) $('autoQuiz').checked = true;
-  if ($('nightAutoSubmit')) $('nightAutoSubmit').checked = true;
+  // 夜间模式 = 全自动：自动做题 + 自动提交（不需要用户额外勾选）
+  setQuizFullyAuto();
 
   const r = await App.nightSchedule(NIGHT_DELAY_MS);
   if (!r || !r.ok) {
@@ -499,6 +504,179 @@ function bindModel() {
   };
 }
 
+// ---------------------------------------------------------------- 课程总览
+let lastOverview = null;
+
+function renderOverview(data) {
+  const count = $('ovCount');
+  const pending = $('ovPending');
+  const last = $('ovLast');
+  const list = $('ovList');
+  const len = $('ovLen');
+  if (!count) return;
+
+  if (!data || !data.ok) {
+    count.textContent = data && data.reason === 'not-mounted' ? '请先进入课程学习页' : '—';
+    pending.textContent = '—';
+    last.textContent = '—';
+    if (list) list.textContent = '';
+    if (len) len.textContent = '0';
+    return;
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  count.textContent = items.length + ' 节';
+  const sum = data.summary;
+  pending.textContent = sum && typeof sum.done === 'number' ? sum.done + '/' + sum.total + ' 任务点' : '—';
+  const cursor = data.cursor;
+  last.textContent = cursor && cursor.jobTitle ? cursor.jobTitle : '暂无记录';
+
+  if (len) len.textContent = String(items.length);
+  if (list) {
+    list.textContent = '';
+    for (const it of items) {
+      const d = document.createElement('div');
+      d.className = 'ovitem';
+      d.textContent = it.title || '(未命名)';
+      if (it.pending) {
+        const s = document.createElement('span');
+        s.className = 'pend';
+        s.textContent = it.pending + ' 待完成';
+        d.appendChild(s);
+      }
+      list.appendChild(d);
+    }
+  }
+}
+
+async function pollOverview() {
+  try {
+    const r = await App.courseOverview();
+    if (!r || !r.ok) return renderOverview(null);
+    lastOverview = r.data;
+    renderOverview(r.data);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------- 待办任务队列
+const STATUS_LABEL = { todo: '未开始', doing: '处理中', done: '已完成', manual: '需人工' };
+const PRIORITY_LABEL = { 2: '高', 1: '中', 0: '低' };
+
+let tasks = [];
+
+function renderTasks() {
+  const box = $('taskList');
+  const info = $('taskInfo');
+  if (!box) return;
+  if (info) {
+    const by = (s) => tasks.filter((t) => t.status === s).length;
+    info.textContent =
+      tasks.length === 0
+        ? '尚未建立任务'
+        : '共 ' + tasks.length + ' 项 · 未开始 ' + by('todo') + ' · 处理中 ' + by('doing') + ' · 已完成 ' + by('done') + ' · 需人工 ' + by('manual');
+  }
+  box.textContent = '';
+  for (const t of tasks) {
+    const row = document.createElement('div');
+    row.className = 'taskitem';
+
+    {
+      const tt = document.createElement('div');
+      tt.className = 'tt';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = t.chapterTitle || t.courseName || '(未命名)';
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = (t.courseName ? t.courseName + ' · ' : '') + (PRIORITY_LABEL[t.priority] || '中') + '优先级';
+      tt.appendChild(name);
+      tt.appendChild(sub);
+      row.appendChild(tt);
+    }
+
+    const badge = document.createElement('span');
+    badge.className = 'badge2 ' + (t.status || 'todo');
+    badge.textContent = STATUS_LABEL[t.status] || '未开始';
+    row.appendChild(badge);
+
+    const sel = document.createElement('select');
+    for (const s of ['todo', 'doing', 'done', 'manual']) {
+      const o = document.createElement('option');
+      o.value = s;
+      o.textContent = STATUS_LABEL[s];
+      if (t.status === s) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.onchange = async () => {
+      await App.tasksUpdate(t.id, { status: sel.value });
+      await loadTasks();
+    };
+    row.appendChild(sel);
+
+    const del = document.createElement('button');
+    del.textContent = '删';
+    del.onclick = async () => {
+      await App.tasksRemove(t.id);
+      await loadTasks();
+    };
+    row.appendChild(del);
+
+    box.appendChild(row);
+  }
+}
+
+async function loadTasks() {
+  try {
+    const r = await App.tasksList();
+    tasks = (r && r.ok && Array.isArray(r.tasks)) ? r.tasks : [];
+    renderTasks();
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function bindTasks() {
+  const imp = $('taskImport');
+  const clean = $('taskClean');
+  if (imp) {
+    imp.onclick = async () => {
+      const data = lastOverview;
+      if (!data || !data.ok || !Array.isArray(data.items) || !data.items.length) {
+        return msg('taskMsg', '请先进入课程学习页，读取到章节后再导入', 'err');
+      }
+      const r = await App.tasksList();
+      const exist = new Set(((r && r.tasks) || []).map((t) => t.chapterTitle));
+      let added = 0;
+      for (const it of data.items) {
+        const title = String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim();
+        if (!title || exist.has(title)) continue;
+        await App.tasksAdd({
+          chapterTitle: title,
+          courseName: '',
+          type: 'all',
+          priority: it.pending ? 2 : 1,
+          status: 'todo',
+        });
+        added++;
+      }
+      await loadTasks();
+      msg('taskMsg', added ? '已导入 ' + added + ' 个章节任务' : '没有新章节可导入', added ? 'ok' : 'info');
+      log('待办导入 ' + added + ' 项', added ? 'ok' : '');
+    };
+  }
+
+  if (clean) {
+    clean.onclick = async () => {
+      const keep = tasks.filter((t) => t.status !== 'done');
+      await App.tasksSave(keep);
+      await loadTasks();
+      msg('taskMsg', '已清理完成项', 'info');
+    };
+  }
+}
+
 // ---------------------------------------------------------------- 版本
 async function showVersion() {
   try {
@@ -538,7 +716,10 @@ function init() {
   bindQuizToggles();
   bindNight();
   bindModel();
+  bindTasks();
   pollModel();
+  pollOverview();
+  loadTasks();
   pollPage();
   pollRunner();
   pollQuiz();
@@ -547,6 +728,7 @@ function init() {
   setInterval(pollRunner, 1200);
   setInterval(pollQuiz, 4000);
   setInterval(pollModel, 20000);
+  setInterval(pollOverview, 5000);
 }
 
 init();

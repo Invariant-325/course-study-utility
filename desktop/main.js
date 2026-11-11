@@ -675,6 +675,106 @@ function registerIpc() {
   ipcMain.handle('web:info', () => browser ? browser.info() : { url: '', title: '' });
   ipcMain.handle('web:home', () => browser ? browser.home() : { ok: false });
 
+  // ---------------- 课程总览（仪表盘）----------------
+  // 只读：章节列表、待完成数、最近学习记录。不改页面，不推断完成。
+  ipcMain.handle('course:overview', async () => {
+    const view = browser && browser.view;
+    if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, reason: 'no-view' };
+    const code = `(function(){
+      var a = window.__cxNaturalWatchApp;
+      if (!a || !a.tree) return { ok: false, reason: 'not-mounted' };
+      try {
+        var cat = a.tree.catalogEntries();
+        var prog = null;
+        try { prog = a.tree.catalogProgress(); } catch (e) { prog = null; }
+        var sum = null;
+        try { sum = a.tree.readCatalogSummary(); } catch (e) { sum = null; }
+        var cursor = null;
+        try { cursor = a.config && a.config.readCursor ? a.config.readCursor() : null; } catch (e) { cursor = null; }
+        var items = (cat.items || []).map(function (el) {
+          var txt = String(el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+          var m = txt.match(/(\\d+)\\s*个待完成/);
+          return { title: txt, pending: m ? Number(m[1]) : null };
+        });
+        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor };
+      } catch (e) {
+        return { ok: false, reason: String((e && e.message) || e) };
+      }
+    })()`;
+    try {
+      return { ok: true, data: await view.webContents.executeJavaScript(code, true) };
+    } catch (e) {
+      return { ok: false, reason: String((e && e.message) || e) };
+    }
+  });
+
+  // ---------------- 待办任务队列（持久化）----------------
+  // 存 userData/tasks.json；状态四态：todo/doing/done/manual
+  const TASKS_FILE = () => path.join(app.getPath('userData'), 'tasks.json');
+
+  function readTasks() {
+    try {
+      const f = TASKS_FILE();
+      if (!fs.existsSync(f)) return [];
+      const arr = JSON.parse(fs.readFileSync(f, 'utf8'));
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeTasks(list) {
+    try {
+      const f = TASKS_FILE();
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify(Array.isArray(list) ? list : [], null, 2), 'utf8');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  ipcMain.handle('tasks:list', async () => ({ ok: true, tasks: readTasks() }));
+
+  ipcMain.handle('tasks:save', async (_e, list) => writeTasks(list));
+
+  ipcMain.handle('tasks:add', async (_e, task) => {
+    const list = readTasks();
+    const now = Date.now();
+    const item = Object.assign(
+      {
+        id: 't_' + now + '_' + Math.random().toString(36).slice(2, 7),
+        courseId: '',
+        courseName: '',
+        chapterTitle: '',
+        type: 'all',
+        priority: 1,
+        status: 'todo',
+        note: '',
+      },
+      task || {},
+      { createdAt: now, updatedAt: now }
+    );
+    list.push(item);
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list, added: item } : r;
+  });
+
+  ipcMain.handle('tasks:update', async (_e, id, patch) => {
+    const list = readTasks();
+    const i = list.findIndex((t) => t && t.id === id);
+    if (i < 0) return { ok: false, error: 'NOT_FOUND' };
+    list[i] = Object.assign({}, list[i], patch || {}, { updatedAt: Date.now() });
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list, updated: list[i] } : r;
+  });
+
+  ipcMain.handle('tasks:remove', async (_e, id) => {
+    const list = readTasks().filter((t) => !t || t.id !== id);
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list } : r;
+  });
+
   // ---------------- 夜间静默模式 ----------------
   // 需求：确认后 30 秒关闭显示屏 + 静音，进入无人监管刷课。
   // 关屏用 WM_SYSCOMMAND/SC_MONITORPOWER；静音只作用于网页音频，不改系统音量，
