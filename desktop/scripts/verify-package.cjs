@@ -9,11 +9,11 @@ const archive = path.join(dir, 'resources/app.asar');
 // 新界面把脚本拆到了 ui/scripts、样式拆到了 ui/styles，这里按实际结构校验。
 // 注意：Windows 上 asar.extractFile 只认反斜杠路径，用 / 会报 not found。
 for (const f of [
-  'course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
+  'chapter-title.cjs','course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
   'main.js','preload.js',
   'ui/index.html',
-  'ui/scripts/app.js','ui/scripts/theme.js',
-  'ui/styles/tokens.css','ui/styles/base.css','ui/styles/layout.css','ui/styles/components.css','ui/styles/pages.css',
+  'ui/scripts/app.js','ui/scripts/theme.js','ui/scripts/layout.js',
+  'ui/styles/tokens.css','ui/styles/base.css','ui/styles/layout.css','ui/styles/components.css','ui/styles/pages.css','ui/styles/product.css',
   'ui/assets/logo.png',
   'userscript/chaoxing-helper.user.js',
 ]) {

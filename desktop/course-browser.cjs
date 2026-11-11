@@ -1,6 +1,6 @@
 const { PORTAL_URL, isPlatformUrl, isLandingUrl, clickCourseMenu } = require('./browser-policy.cjs');
 
-function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }) {
+function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, defaultMuted = false }) {
   const pages = [];
   let active, closing = false;
   const states = new WeakMap();
@@ -89,6 +89,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
     const page = new WebContentsView({ ...(options.webContents ? {webContents: options.webContents} : {}), webPreferences: { ...options.webPreferences,
       session: ses, preload, contextIsolation: true, nodeIntegration: false,
       nodeIntegrationInSubFrames: false, sandbox: true, backgroundThrottling: false } });
+    page.webContents.setAudioMuted(defaultMuted);
     page.setBackgroundColor('#ffffff');
     const wc = page.webContents;
     const state = { error: '', lastGood: PORTAL_URL, routing: false, recovered: false,
@@ -139,6 +140,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
   win.on('restore', () => { layout(); if (active) active.webContents.invalidate(); });
   return {
     get view() { return active; },
+    setMuted(value) {defaultMuted=!!value;for(const p of pages)if(!p.webContents.isDestroyed())p.webContents.setAudioMuted(defaultMuted);},
     setVisible: setViewVisible,
     isVisible: isViewVisible,
     goto(url) { return load(active, url); },

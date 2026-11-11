@@ -25,6 +25,9 @@ if (isAppUi) {
     courseStatus: () => ipcRenderer.invoke('courses:status'),
     courseStart: () => ipcRenderer.invoke('courses:start'),
     courseCancelStart: () => ipcRenderer.invoke('courses:cancel'),
+    preferences: patch => ipcRenderer.invoke('app:preferences',patch),
+    checkUpdates: () => ipcRenderer.invoke('app:updates'),
+    openExternal: url => ipcRenderer.invoke('app:external',url),
     // 网页控制
     goto: (url) => ipcRenderer.invoke('web:goto', url),
     toggleWeb: (force) => ipcRenderer.invoke('web:toggle', force),

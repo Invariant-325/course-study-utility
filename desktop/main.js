@@ -71,6 +71,7 @@ let win = null;
 let browser = null;
 let coursePortal = null;
 const { createCoursePortal } = require('./course-portal.cjs');
+const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
 let closingWindow = false;
 let store = {};
@@ -205,14 +206,14 @@ async function createWindow() {
     backgroundMaterial: 'mica',
     backgroundColor: '#00000000',
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
+    webPreferences: { icon:path.join(__dirname,'build/icon.ico'),preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html')).catch(fatalStartup);
   win.webContents.on('did-finish-load', () => bootLog('control-panel-loaded'));
   win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
-    preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog });
+    preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog,defaultMuted:store.defaultWebMuted===true });
   // Use the portal's own course-menu handler after normal platform login.
   coursePortal = createCoursePortal({ browser });
   coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
@@ -565,7 +566,12 @@ async function askVision(payload) {
 
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
-  ipcMain.handle('courses:list', () => coursePortal ? coursePortal.list() : {ok:true,courses:[],state:{phase:'loading'}});
+  const externalBase='https://github.com/Invariant-325';
+  ipcMain.handle('app:external',async (_e,url)=>{let u;try{u=new URL(url)}catch{return{ok:false}}if(u.origin!=='https://github.com'||!(u.pathname==='/Invariant-325'||u.pathname.startsWith('/Invariant-325/course-study-utility')))return{ok:false};await electron.shell.openExternal(u.href);return{ok:true}});
+  ipcMain.handle('app:preferences',(_e,patch)=>{if(patch&&typeof patch.defaultWebMuted==='boolean'){store.defaultWebMuted=patch.defaultWebMuted;browser?.setMuted(patch.defaultWebMuted)}if(patch&&typeof patch.autoCheckUpdates==='boolean')store.autoCheckUpdates=patch.autoCheckUpdates;if(patch)saveStore();return{defaultWebMuted:store.defaultWebMuted===true,autoCheckUpdates:store.autoCheckUpdates!==false}});
+  ipcMain.handle('app:updates',async()=>{try{const res=await fetch('https://api.github.com/repos/Invariant-325/course-study-utility/releases/latest',{headers:{Accept:'application/vnd.github+json','User-Agent':'CourseStudyUtility'},signal:AbortSignal.timeout(12000)});if(!res.ok)return{ok:false,error:res.status===403?'请求受限，稍后重试':'更新服务返回 '+res.status};const d=await res.json();if(d.prerelease||d.draft)return{ok:false,error:'未找到正式版本'};const clean=v=>String(v).replace(/^v/,'').split('-')[0].split('.').map(Number);const a=clean(d.tag_name),b=clean(app.getVersion());let cmp=0;for(let i=0;i<3;i++){if(a[i]!==b[i]){cmp=a[i]>b[i]?1:-1;break}}if(!a.every(Number.isFinite))return{ok:false,error:'版本信息无效'};return{ok:true,current:app.getVersion(),latest:d.tag_name,available:cmp>0||(cmp===0&&app.getVersion().includes('-')),url:d.html_url}}catch{return{ok:false,error:'无法连接 GitHub，检查网络后重试'}}});
+  const progressNamespace=async()=>{const cookies=await browser?.view?.webContents.session.cookies.get({name:'_uid'});const id=cookies?.[0]?.value;return id?require('node:crypto').createHash('sha256').update(id).digest('hex'):null};
+  ipcMain.handle('courses:list', async () => {const result=coursePortal?await coursePortal.list():{ok:true,courses:[],state:{phase:'loading'}};const key=await progressNamespace();const cache=key?store.courseProgressByAccount?.[key]||{}:{};result.courses=result.courses.map(c=>({...c,progress:cache[c.id]||null}));return result;});
   ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
   ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
@@ -841,18 +847,36 @@ function registerIpc() {
         try { sum = a.tree.readCatalogSummary(); } catch (e) { sum = null; }
         var cursor = null;
         try { cursor = a.config && a.config.readCursor ? a.config.readCursor() : null; } catch (e) { cursor = null; }
+        var cleanChapter = ${cleanChapterTitle.toString()};
         var items = (cat.items || []).map(function (el) {
           var txt = String(el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
           var m = txt.match(/(\\d+)\\s*个待完成/);
-          return { title: txt, pending: m ? Number(m[1]) : null };
+          var label=el.querySelector('.chapter-title,.catalog_name,.catalog_title,.posCatalog_name');
+          return { title: cleanChapter(label ? label.textContent : txt), pending: m ? Number(m[1]) : a.tree.readCatalogPending(el) };
         });
-        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor };
+        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor, jobs:a.tree.enumerate().map(j=>({type:j.type,state:j.state})) };
       } catch (e) {
         return { ok: false, reason: String((e && e.message) || e) };
       }
     })()`;
     try {
-      return { ok: true, data: await view.webContents.executeJavaScript(code, true) };
+      const data=await view.webContents.executeJavaScript(code,true);
+      const id=coursePortal?.status().selected,key=await progressNamespace();
+      if(data.ok&&id&&key){
+        store.courseProgressByAccount ||= {};const cache=store.courseProgressByAccount[key] ||= {};const saved=cache[id] ||= {chapters:{}};
+        if(data.summary&&Number(data.summary.total)>0&&data.summary.done>=0&&data.summary.done<=data.summary.total)saved.summary={done:Number(data.summary.done),total:Number(data.summary.total)};
+        const clean=cleanChapterTitle;
+        const active=data.progress?.items?.find(i=>i.active);const jobs=data.jobs||[];
+        const finished=type=>{const list=jobs.filter(j=>j.type===type);return list.length&&list.every(j=>j.state==='finished')?true:list.some(j=>j.state==='unfinished')?false:null};
+        for(const item of data.items||[]){const title=clean(item.title);const old=saved.chapters[title]||{};
+          if(item.pending===0)Object.assign(old,{complete:true});
+          else if(item.pending>0)old.complete=false;
+          if(active&&clean(active.text).startsWith(title.slice(0,Math.min(12,title.length))))Object.assign(old,{videoDone:finished('video'),quizDone:finished('work')});
+          saved.chapters[title]=old;Object.assign(item,old);
+        }
+        saved.updatedAt=Date.now();saveStore();
+      }
+      return {ok:true,data};
     } catch (e) {
       return { ok: false, reason: String((e && e.message) || e) };
     }
@@ -936,7 +960,7 @@ function registerIpc() {
     try {
       const view = browser && browser.view;
       if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, error: 'no-view' };
-      view.webContents.setAudioMuted(!!muted);
+      browser.setMuted(!!muted);
       return { ok: true, muted: !!muted };
     } catch (e) {
       return { ok: false, error: String(e && e.message) };
@@ -997,7 +1021,7 @@ function registerIpc() {
 
   ipcMain.handle('night:cancel', async () => {
     if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
-    setAppMuted(false);
+    setAppMuted(store.defaultWebMuted===true);
     nightState = { pending: false, active: false, executeAt: 0, error: '' };
     bootLog('[night] cancelled');
     if (win && !win.isDestroyed()) win.webContents.send('night:changed', nightState);

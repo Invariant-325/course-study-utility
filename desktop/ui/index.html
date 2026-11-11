@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="styles/components.css" />
 <link rel="stylesheet" href="styles/pages.css" />
 <style>#verificationPanel[hidden]{display:none!important}#verificationPanel{position:fixed;right:24px;top:60px;z-index:85;max-width:350px;padding:20px;background:var(--md-sys-color-surfaceContainerHigh);border:1px solid var(--md-sys-color-outlineVariant);border-radius:16px;box-shadow:0 8px 30px #0003}#verificationImage{display:block;width:240px;max-width:100%;height:auto;margin:12px auto}#verificationImage[hidden]{display:none}</style>
+<link rel="stylesheet" href="styles/product.css" />
 </head>
 <body>
 <div id="mica"></div>
@@ -24,13 +25,13 @@
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
       </button>
       <button class="tmenu" id="tbApp">应用</button>
-      <button class="tmenu" id="tbEdit">编辑</button>
+      
     </div>
 
     <div class="ctx">
-      <span class="strong" id="ctxCourse">形势与政策（2026年秋）</span>
+      <span class="strong" id="ctxCourse">尚未选择课程</span>
       <span class="sep">·</span>
-      <span id="ctxState">正在播放 1.2</span>
+      <span id="ctxState">等待开始</span>
     </div>
 
     <div class="tools no-drag">
@@ -40,9 +41,9 @@
       <button class="iconbtn" id="btnSeed" title="换配色" aria-label="换配色">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>
       </button>
-      <button class="iconbtn" id="btnMore" title="更多">
+      <button class="iconbtn web-pill" id="btnMore" title="显示或隐藏平台网页" aria-label="显示或隐藏平台网页">
         <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></svg>
-      </button>
+      <span id="webPillLabel">网页</span></button>
     </div>
 
     <div class="winctl no-drag">
@@ -72,27 +73,23 @@
 
     <button class="side-primary" id="sideStart">
       <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
-      开始刷课
+      开始学习
     </button>
 
     <nav class="sidenav">
       <button class="sideitem" data-nav="dashboard" aria-selected="true">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.8"/><rect x="14" y="3" width="7" height="5" rx="1.8"/><rect x="14" y="12" width="7" height="9" rx="1.8"/><rect x="3" y="16" width="7" height="5" rx="1.8"/></svg>
-        总览
+        主页
       </button>
       <button class="sideitem" data-nav="workspace" aria-selected="false">
         <svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10l2 2.5h6.5A1.5 1.5 0 0 1 20 8v10.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/></svg>
         学习
-        <span class="sbadge" id="navLearnBadge">35</span>
+        <span class="sbadge" id="navLearnBadge">0</span>
       </button>
-      <button class="sideitem" data-nav="model" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.6 5 .7-3.6 3.6.9 5-4.5-2.4L7.5 17l.9-5L4.8 8.3l5-.7z"/></svg>
-        模型
+      <button class="sideitem" data-nav="settings" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.6 5 .7-3.6 3.6.9 5-4.5-2.4L7.5 17l.9-5L4.8 8.3l5-.7z"/></svg> 设置
       </button>
-      <button class="sideitem" data-nav="logs" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        日志
-      </button>
+      <button class="sideitem" data-nav="about" aria-selected="false"><span>关于</span></button>
     </nav>
 
     <div class="sidegroup">
@@ -110,22 +107,22 @@
       <div class="acc-rows">
         <div class="acc-row">
           <span class="k"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>今日播放</span>
-          <span class="v" id="accPlay">3h12m</span>
+          <span class="v" id="accPlay">0 秒</span>
         </div>
         <div class="acc-row">
           <span class="k"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 6-5-2.8L7 19l1-6-4-4 5.5-1z"/></svg>今日 Token</span>
-          <span class="v" id="accTok">128.4k</span>
+          <span class="v" id="accTok">0</span>
         </div>
         <div class="acc-row">
           <span class="k"><svg viewBox="0 0 24 24"><path d="M4 16V8M9 16V5M14 16v-6M19 16v-9"/></svg>费用估算</span>
-          <span class="v" id="accCost">¥2.31</span>
+          <span class="v" id="accCost">—</span>
         </div>
       </div>
       <div class="acc-bar" id="accBar"><i class="a" style="width:38%"></i><i class="b" style="width:26%"></i></div>
-      <div class="acc-note" id="accNote">本月额度 64% · 按当前速度约 6 天后用完</div>
+      <div class="acc-note" id="accNote">尚未配置模型</div>
 
       <button class="acc-user" id="accUser">
-        <span class="avatar" id="accAvatar">许</span>
+        <span class="avatar" id="accAvatar">用</span>
         <span class="un" id="accName">本机用户</span>
         <span class="caret"><svg viewBox="0 0 24 24"><path d="M8 15l4-4 4 4"/></svg></span>
       </button>
@@ -143,15 +140,15 @@
 
   <!-- ================= 内容 ================= -->
   <main id="main">
-    <!-- ---------------- 总览 ---------------- -->
+    <!-- ---------------- 主页 ---------------- -->
     <section class="page" data-page="dashboard" data-active="true">
       <div class="page-inner">
         <div class="pagehead">
           <div class="htext">
-            <h1 class="t-headline-large">总览</h1>
+            <h1 class="t-headline-large">主页</h1>
             <p class="t-body-medium t-on-surface-variant">
-              已读取 <strong id="courseCount">0</strong> 门课程。选择课程后可在后台进入学习页。
-              <span id="backgroundStatus">后台正在读取课程…</span>
+              已读取 <strong id="courseCount">0</strong> 门课程。选一门开始学习。
+              <span id="backgroundStatus">正在加载课程…</span>
             </p>
           </div>
           <div class="hact">
@@ -163,10 +160,10 @@
         </div>
 
         <div class="statstrip">
-          <div class="statcell"><div class="sv" id="stPlayed">3 小时 12 分</div><div class="sl">今日播放时长</div></div>
-          <div class="statcell"><div class="sv" id="stConfirmed">24</div><div class="sl">平台确认任务点</div></div>
-          <div class="statcell"><div class="sv" id="stPending">35</div><div class="sl">待完成</div></div>
-          <div class="statcell"><div class="sv" id="stTokens">128.4k</div><div class="sl">今日 Token</div></div>
+          <div class="statcell"><div class="sv" id="stPlayed">0 秒</div><div class="sl">今日播放时长</div></div>
+          <div class="statcell"><div class="sv" id="stConfirmed">0</div><div class="sl">已完成任务</div></div>
+          <div class="statcell"><div class="sv" id="stPending">0</div><div class="sl">待完成</div></div>
+          <div class="statcell"><div class="sv" id="stTokens">0</div><div class="sl">今日 Token</div></div>
         </div>
 
         <div class="dash-grid" id="courseGrid"></div>
@@ -178,8 +175,8 @@
       <div class="page-inner">
         <div class="pagehead">
           <div class="htext">
-            <h1 class="t-headline-large">形势与政策（2026年秋）</h1>
-            <p class="t-body-medium t-on-surface-variant">31 个章节 · 已完成 24 · 待完成 35 个任务点</p>
+            <h1 class="t-headline-large">尚未选择课程</h1>
+            <p class="t-body-medium t-on-surface-variant">选择课程后查看章节</p>
           </div>
           <div class="hact">
             <div class="glass-bar">
@@ -194,7 +191,7 @@
           <button class="wktab" data-wk="todo" aria-selected="false">待完成</button>
           <button class="wktab" data-wk="manual" aria-selected="false">需人工</button>
           <div class="wktab-fill"></div>
-          <span class="wktab-meta" id="wkMeta">31 个章节 · 24 已完成</span>
+          <span class="wktab-meta" id="wkMeta">章节尚未读取</span>
         </div>
 
         <div class="workspace">
@@ -204,7 +201,7 @@
               <div class="ring" id="nowRing" style="--p: 62"></div>
               <div class="nb-text">
                 <div class="nb-state"><span class="pulse" data-live="true"></span><span id="nowState">正在播放</span></div>
-                <div class="nb-sub" id="nowChapter">1.2 习近平党建思想的核心要义 · 已经播放 6:12 / 10:00</div>
+                <div class="nb-sub" id="nowChapter">选择课程后开始学习</div>
               </div>
               <div style="display:flex;gap:6px">
                 <button class="btn tonal" id="nowToggle">
@@ -225,7 +222,7 @@
             <div class="card filled">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <span class="t-title-small" style="flex:1">任务队列</span>
-                <span class="chip tone-primary" style="height:26px">进行中 1</span>
+                <span class="chip tone-primary" style="height:26px">暂无任务</span>
               </div>
               <div class="queue" id="queueList"></div>
               <button class="btn text" id="btnQueueAdd" style="margin-top:8px;width:100%">
@@ -244,24 +241,24 @@
     </section>
 
     <!-- ---------------- 模型配置 ---------------- -->
-    <section class="page" data-page="model">
+    <section class="page" data-page="settings">
       <div class="page-inner settings-wrap">
         <div class="pagehead">
           <div class="htext">
-            <h1 class="t-headline-large">模型</h1>
+            <h1 class="t-headline-large">设置</h1>
             <p class="t-body-medium t-on-surface-variant">
-              填你自己的 API Key 即可，不需要安装别的软件，也没有配置文件要改。
+              配置模型、外观和学习偏好。
             </p>
           </div>
         </div>
 
         <div class="settings-section">
-          <div class="sec-title">凭据</div>
+          <div class="sec-title">模型服务</div>
           <div class="card filled">
             <div class="field" style="margin-bottom:14px">
               <label for="apiKey">API Key</label>
               <input type="password" id="apiKey" placeholder="sk-··········" autocomplete="off" spellcheck="false" />
-              <div class="hint" id="keyHint">已配置 · sk-****4f2a · 加密存储在本机</div>
+              <div class="hint" id="keyHint">尚未配置</div>
             </div>
             <div style="display:flex;gap:8px">
               <button class="btn filled" id="btnSaveKey">保存</button>
@@ -277,7 +274,7 @@
             <div class="setting-row">
               <div class="sr-main">
                 <div class="sr-title">深色主题</div>
-                <div class="sr-sub">跟随系统或手动切换。半透明材质在深色下更明显。</div>
+                <div class="sr-sub">调整界面的明暗。</div>
               </div>
               <label class="switch">
                 <input type="checkbox" id="darkToggle" />
@@ -287,7 +284,7 @@
             <hr class="divider" />
             <div class="setting-row" style="display:block">
               <div class="sr-title" style="margin-bottom:4px">主题色</div>
-              <div class="sr-sub">整套配色由这个种子色推导，包括容器色、描边、状态色。</div>
+              <div class="sr-sub">选择喜欢的颜色，按钮与选中状态会一起变化。</div>
               <div class="seedrow" id="seedRow"></div>
               <div class="palette-strip" id="paletteStrip"></div>
             </div>
@@ -295,7 +292,7 @@
         </div>
 
         <div class="settings-section">
-          <div class="sec-title">自动化</div>
+          <div class="sec-title">学习偏好</div>
           <div class="card filled">
             <div class="setting-row">
               <div class="sr-main">
@@ -322,7 +319,7 @@
             <div class="setting-row">
               <div class="sr-main">
                 <div class="sr-title">遇异常时通知</div>
-                <div class="sr-sub">需要人工处理时暂停任务并弹系统通知。</div>
+                <div class="sr-sub">任务需要人工处理时发送通知。</div>
               </div>
               <label class="switch">
                 <input type="checkbox" id="swNotify" checked />
@@ -332,15 +329,12 @@
           </div>
         </div>
       </div>
-    </section>
-
-    <!-- ---------------- 日志 ---------------- -->
-    <section class="page" data-page="logs">
+    <div class="card filled preference-card"><h2>声音与更新</h2><label class="preference"><span>课程网页默认静音<small>仅控制 App 内网页音频，不改系统音量</small></span><input type="checkbox" id="defaultWebMuted"></label><label class="preference"><span>启动后主动检查更新<small>仅查询 GitHub 最新正式版，不自动安装</small></span><input type="checkbox" id="autoCheckUpdates"></label><button class="btn outlined" id="checkUpdateSettings">检查更新</button><p id="updateResult" role="status"></p><button class="btn filled" id="openUpdate" hidden>查看新版本</button></div><details class="card settings-logs"><summary>运行日志</summary>
       <div class="page-inner">
         <div class="pagehead">
           <div class="htext">
             <h1 class="t-headline-large">运行日志</h1>
-            <p class="t-body-medium t-on-surface-variant">只保留最近 500 行。不含 Cookie、Key 和个人浏览记录。</p>
+            <p class="t-body-medium t-on-surface-variant">近期运行记录，用于排查问题。</p>
           </div>
           <div class="hact">
             <button class="btn outlined" id="btnClearLog">清空</button>
@@ -349,20 +343,24 @@
 
         <div class="logwrap">
           <div class="logbar">
-            <span class="lbtitle">实时输出</span>
+            <span class="lbtitle">最近记录</span>
             <span class="chip tone-ok" style="height:26px"><span class="dot"></span>运行中</span>
           </div>
           <div class="loglist" id="logList"></div>
         </div>
       </div>
-    </section>
+    </details></section>
+
+    <!-- ---------------- 日志 ---------------- -->
+    
+<section class="page" data-page="about"><div class="page-inner"><div class="pagehead"><h1>关于</h1></div><div class="card filled about-card"><img src="assets/logo@2x.png" width="88" height="88" alt="课程伴学工具 Logo"><h2>课程伴学工具</h2><p id="aboutVersion"></p><p>Invariant-325 维护和发布，DeepSeek 与 Codex 辅助开发。</p><div class="about-links"><button class="btn filled" data-link="https://github.com/Invariant-325">GitHub 主页</button><button class="btn outlined" data-link="https://github.com/Invariant-325/course-study-utility">项目仓库</button><button class="btn outlined" data-link="https://github.com/Invariant-325/course-study-utility/issues">问题反馈</button></div><h3>第三方兼容声明</h3><p>兼容学习通（超星平台）。本工具并非官方产品，与超星平台无隶属、授权、合作或背书关系。相关名称仅用于兼容性说明。</p><h3>许可与数据</h3><p>GPL-3.0-only。模型服务由使用者自行配置并在本机加密保存，二维码不写入日志。AI 结果需自行核对，身份验证由本人完成。</p></div></div></section>
   </main>
 </div>
 
 <!-- FAB：主操作 -->
 <button class="fab" id="fab">
   <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
-  <span id="fabLabel">开始刷课</span>
+  <span id="fabLabel">开始学习</span>
 </button>
 
 <!-- 浮层 -->
@@ -389,11 +387,11 @@
 
   <div class="snackbar" id="snackbar">
     <span id="snackText">已保存</span>
-    <button id="snackAction">撤销</button>
   </div>
 </div>
 
 <script src="scripts/theme.js"></script>
 <script src="scripts/app.js"></script>
+<script src="scripts/layout.js"></script>
 </body>
 </html>

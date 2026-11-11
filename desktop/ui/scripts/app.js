@@ -15,6 +15,7 @@
   // ---------------- 运行时数据（由真实 IPC 填充） ----------------
   let COURSES = [];
   let selectedCourse = '';
+  let PROFILE={name:'',avatar:''};
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let CHAPTERS = [];
   let QUEUE = [];
@@ -105,7 +106,7 @@ function renderSideCourses() {
   box.innerHTML = COURSES.map((c) => {
     const rel = c.total == null ? '未读取章节' : c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需人工' : '未开始';
     return (
-      '<button class="lnk" data-course="' + escapeHtml(c.id) + '" data-state="' + c.state + '">' +
+      '<button class="lnk" data-selected="'+(c.id===selectedCourse)+'" data-course="' + escapeHtml(c.id) + '" data-state="' + c.state + '">' +
         '<span class="dot"></span>' +
         '<span class="lt">' + escapeHtml(c.name) + '</span>' +
         '<span class="rt">' + rel + '</span>' +
@@ -125,16 +126,9 @@ function renderSideCourses() {
 
 // ---------------------------------------------------------------- 账户区
 function renderAccount() {
-  const play = $('#accPlay');
-  const tok = $('#accTok');
-  const cost = $('#accCost');
-  const name = $('#accName');
-  const ava = $('#accAvatar');
-  if (play) play.textContent = '0 秒';
-  if (tok) tok.textContent = '0';
-  if (cost) cost.textContent = '—';
-  if (name) name.textContent = '本机用户';
-  if (ava) ava.textContent = '用';
+ const name=$('#accName'),avatar=$('#accAvatar');
+ if(name)name.textContent=PROFILE.name||'未读取账户';
+ if(avatar){avatar.textContent=(PROFILE.name||'账户').slice(0,1);if(PROFILE.avatar){const img=document.createElement('img');img.src=PROFILE.avatar;img.alt='平台头像';img.onerror=()=>{avatar.textContent=(PROFILE.name||'账户').slice(0,1)};avatar.replaceChildren(img)}}
 }
 
 // 头像菜单
@@ -173,7 +167,7 @@ function bindAccount() {
     // Ctrl + ,
     if (e.ctrlKey && e.key === ',') {
       e.preventDefault();
-      goto('model');
+      goto('settings');
       close();
     }
   });
@@ -182,8 +176,8 @@ function bindAccount() {
     el.addEventListener('click', () => {
       const mi = el.dataset.mi;
       close();
-      if (mi === 'settings') goto('model');
-      else if (mi === 'about') snack('课程伴学工具 v0.2.0 · 非官方兼容工具');
+      if (mi === 'settings') goto('settings');
+      else if (mi === 'about') goto('about');
       else if (mi === 'logout')
         openDialog('退出登录', '退出后会清除本机保存的学习通登录状态，需要重新登录。确定？', () =>
           snack('退出登录尚未接入，请显示网页后在平台账户菜单退出')
@@ -205,6 +199,7 @@ function bindAccount() {
   function goto(page) {
     if (!page || page === currentPage) return;
     currentPage = page;
+    if(['settings','about'].includes(page)&&$('#verificationPanel'))$('#verificationPanel').hidden=true;
     $$('.page').forEach((el) => {
       el.dataset.active = String(el.dataset.page === page);
     });
@@ -236,7 +231,9 @@ function bindAccount() {
     grid.innerHTML = COURSES.map((c) => {
       const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
       return (
-        '<button class="card filled clickable course-card" data-course="' + escapeHtml(c.id) + '">' +
+        '<button class="card filled clickable course-card" data-selected="' + (c.id===selectedCourse) + '" aria-pressed="' + (c.id===selectedCourse) + '" data-course="' + escapeHtml(c.id) + '">' +
+          (c.cover ? '<img class="course-cover" src="'+escapeHtml(c.cover)+'" alt="课程封面" loading="lazy">' : '') +
+          (c.id===selectedCourse ? '<span class="current-tag">✓ 当前课程</span>' : '') +
           '<div class="cc-top">' +
             '<span class="cc-icon">' + courseIcon() + '</span>' +
             '<span class="cc-name">' + escapeHtml(c.name) + '</span>' +
@@ -245,7 +242,7 @@ function bindAccount() {
             '<span>' + (c.total == null ? '点击读取章节' : c.done + '/' + c.total + ' 任务点') + '</span>' +
           '</div>' +
           '<div class="cc-foot">' +
-            '<div class="progress"><i style="width:' + pct + '%"></i></div>' +
+            (c.total==null ? '<span class="t-on-surface-variant">进度未读取</span>' : '<div class="progress" role="progressbar" aria-valuenow="'+c.done+'" aria-valuemax="'+c.total+'"><i style="width:'+pct+'%"></i></div>') +
             '<span class="cc-pct">' + (c.total == null ? '—' : pct + '%') + '</span>' +
           '</div>' +
         '</button>'
@@ -270,7 +267,7 @@ function bindAccount() {
       '<button class="chapter" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + '>' +
         '<span class="ch-dot"></span>' +
         '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
-        (c.pending ? '<span class="ch-count">' + c.pending + ' 待完成</span>' : '<span class="ch-count">已完成</span>') +
+        '<span class="ch-count">' + ({done:'全部完成',video:'仅视频完成',quiz:'仅测验完成',todo:'未完成',unknown:'待确认'}[c.state]||'待确认') + '</span>' +
       '</button>'
     ).join('');
   }
@@ -383,7 +380,8 @@ function bindAccount() {
     if (App.coursesList) {
       const catalog = await App.coursesList();
       if (catalog && catalog.ok) {
-        COURSES = catalog.courses.map(c => ({...c,total:null,done:0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
+        PROFILE=catalog.profile||PROFILE;renderAccount();
+        COURSES = catalog.courses.map(c => ({...c,total:c.progress?.summary?.total??null,done:c.progress?.summary?.done??0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
         const counter = $('#courseCount'); if (counter) counter.textContent = String(COURSES.length);
       }
     }
@@ -399,7 +397,7 @@ function bindAccount() {
 
       CHAPTERS = items.map((it) => ({
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
-        state: it.pending ? 'todo' : 'done',
+        state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.videoDone===false&&it.quizDone===false?'todo':'unknown',
         pending: it.pending || 0,
         current: cursor.jobTitle ? it.title.indexOf(String(cursor.jobTitle).slice(0, 12)) >= 0 : false,
       }));
@@ -552,7 +550,7 @@ function bindAccount() {
     const note = $('#accNote');
     if (note) {
       note.textContent = MODEL.hasKey
-        ? '模型已就绪 · ' + (MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机 DSH')
+        ? '已配置 API Key · ' + (MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机配置')
         : '未配置 API Key，无法自动答题';
     }
 
@@ -566,7 +564,7 @@ function bindAccount() {
     if (!hint) return;
     if (MODEL.hasKey) {
       const src =
-        MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机 DSH';
+        MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机配置';
       hint.textContent = '已配置 · ' + (MODEL.keyMasked || '') + ' · ' + src;
       hint.style.color = 'var(--md-sys-color-primary)';
     } else {
@@ -583,7 +581,7 @@ function bindAccount() {
     const label = $('#fabLabel');
     if (!fab || !label) return;
     const onWorkspace = currentPage === 'workspace';
-    fab.style.display = 'inline-flex';
+    fab.style.display = ['settings','about'].includes(currentPage)?'none':'inline-flex';
     if (onWorkspace) {
       playing ? (label.textContent = '暂停') : (label.textContent = '继续');
       fab.classList.toggle('is-playing', playing);
@@ -591,7 +589,7 @@ function bindAccount() {
         ? '<path d="M9 5v14M15 5v14"/>'
         : '<path d="M8 5l11 7-11 7z"/>';
     } else {
-      label.textContent = '开始刷课';
+      label.textContent = '开始学习';
       fab.classList.remove('is-playing');
       fab.querySelector('svg').innerHTML = '<path d="M8 5l11 7-11 7z"/>';
     }
@@ -697,9 +695,9 @@ function bindAccount() {
 
   async function selectCourse(id) {
     if (!App?.courseOpen) return;
-    selectedCourse = id;CHAPTERS=[];RUNNER={mounted:false,snap:{}};renderChapters();
+    selectedCourse = id;renderCourses();renderSideCourses();CHAPTERS=[];RUNNER={mounted:false,snap:{}};renderChapters();
     const selected=COURSES.find(c=>c.id===id);if($('#ctxCourse'))$('#ctxCourse').textContent=selected?.name || '课程';
-    goto('workspace'); snack('后台正在打开课程…');
+    goto('workspace'); snack('正在打开课程…');
     try {
       const r=await App.courseOpen(id);
       if (!r?.ok) { snack(r?.error || '课程打开失败'); return; }
@@ -712,13 +710,33 @@ function bindAccount() {
     const panel=$('#verificationPanel'), image=$('#verificationImage'), message=$('#verificationText');
     if (!panel) return;
     const verify=state.verification;
-    panel.hidden=!verify;
+    panel.hidden=!verify || ['settings','about'].includes(currentPage);
     if (verify) {
       message.textContent=verify.expired ? '平台二维码已过期，等待自动更新；也可显示原网页刷新。' : verify.kind==='face' ? '使用手机 App 扫码并完成人脸验证。验证结果由平台确认。' : '使用手机 App 扫码登录。';
       if (verify.image) { image.src=verify.image;image.hidden=false; } else {image.removeAttribute('src');image.hidden=true;message.textContent+=' 暂未能读取二维码，可显示原网页处理。';}
     } else {image.removeAttribute('src');image.hidden=true;}
     const status=$('#backgroundStatus');
-    if (status) status.textContent=state.error || ({loading:'后台正在读取课程…',catalog:'从下方选择课程，无需打开网页。',opening:'后台正在加载课程及章节…',ready:'课程学习页已就绪，可以开始。',running:'任务正在后台执行。',verification:'等待手机完成人脸验证。',login:'等待登录，可扫码或显示原网页登录。'}[state.phase] || '');
+    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
+  }
+  let autoUpdateTimer=null,updateUrl='';
+  async function checkUpdates(automatic=false) {
+    if(!App?.checkUpdates)return;
+    const result=$('#updateResult');if(!automatic&&result)result.textContent='正在检查 GitHub…';
+    const r=await App.checkUpdates();
+    if(!r.ok){if(!automatic){if(result)result.textContent=r.error;snack(r.error)}return;}
+    const text=r.available?'发现新版本 '+r.latest:'当前无需更新（本机 '+r.current+'，GitHub '+r.latest+'）';
+    if(result)result.textContent=text;updateUrl=r.url;
+    if($('#openUpdate'))$('#openUpdate').hidden=!r.available;
+    if(!automatic||r.available)snack(text);
+  }
+  async function bindProduct() {
+    document.querySelectorAll('[data-link]').forEach(b=>b.addEventListener('click',()=>App?.openExternal(b.dataset.link)));
+    const info=await App?.appInfo?.();if($('#aboutVersion'))$('#aboutVersion').textContent='版本 '+(info?.version||'预览');
+    const prefs=await App?.preferences?.();
+    for(const id of ['defaultWebMuted','autoCheckUpdates']){const e=$('#'+id);if(!e)continue;e.checked=!!prefs?.[id];e.addEventListener('change',async()=>{await App?.preferences({[id]:e.checked});if(id==='autoCheckUpdates')scheduleAuto();snack('设置已保存')});}
+    function scheduleAuto(){clearTimeout(autoUpdateTimer);if($('#autoCheckUpdates')?.checked)autoUpdateTimer=setTimeout(()=>checkUpdates(true).catch(()=>{}),12000);}
+    $('#checkUpdateSettings')?.addEventListener('click',()=>checkUpdates(false).catch(()=>snack('检查失败')));
+    $('#openUpdate')?.addEventListener('click',()=>App?.openExternal(updateUrl));scheduleAuto();
   }
   async function windowAction(action) {
     if (!App || !App.windowControl) { snack('仅桌面客户端支持此操作'); return; }
@@ -730,7 +748,7 @@ function bindAccount() {
     try {
       if ((method==='pause'||method==='stop') && App.courseCancelStart) await App.courseCancelStart();
       if (method==='start' && !RUNNER.mounted && App.courseStart) {
-        const r=await App.courseStart();snack(r.ok ? (r.pending ? '已等待后台进入学习页，完成验证后自动开始' : '已启动') : r.error);await pollCourseStatus();return;
+        const r=await App.courseStart();snack(r.ok ? (r.pending ? '正在准备课程，完成验证后会自动开始' : '已启动') : r.error);await pollCourseStatus();return;
       }
       const code = '(async()=>{const a=window.__cxNaturalWatchApp;if(!a||!a.runner)return {ok:false,error:"请先显示网页并进入课程学习页"};await a.runner[' + JSON.stringify(method) + ']();return {ok:true}})()';
       const r = await App.evalMain(code);
@@ -807,10 +825,10 @@ function bindAccount() {
           const mi = el.dataset.mi;
           appMenu.dataset.open = 'false';
           tbApp.setAttribute('aria-expanded', 'false');
-          if (mi === 'settings') goto('model');
+          if (mi === 'settings') goto('settings');
           else if (mi === 'tray') windowAction('hide');
-          else if (mi === 'check') App?.appInfo ? App.appInfo().then(info=>snack('当前版本 '+info.version+'；更新下载见 GitHub Releases')).catch(()=>snack('读取版本失败')) : snack('预览模式');
-          else if (mi === 'about') snack('课程伴学工具 v0.2.0 · 非官方兼容工具');
+          else if (mi === 'check') checkUpdates(false);
+          else if (mi === 'about') goto('about');
           else if (mi === 'quit') openDialog('退出程序', '退出后自动化会停止。确定退出？', () => windowAction('quit'));
         });
       });
@@ -825,7 +843,7 @@ function bindAccount() {
       btnMore.addEventListener('click', async () => {
         try {
           if (App && typeof App.toggleWeb === 'function') {
-            const r = await App.toggleWeb();
+            const r = await App.toggleWeb();const label=$('#webPillLabel');if(label)label.textContent=r.visible?'隐藏网页':'网页';
             snack(r && r.visible ? '已显示网页（用于登录 / 扫码）' : '已隐藏网页，自动化继续在后台运行');
           } else {
             snack('预览模式：正式版这里会切换网页显示');
@@ -979,6 +997,7 @@ function bindAccount() {
     bind();
     bindTheme();
     bindAccount();
+    bindProduct().catch(()=>{});
     $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
     $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
     updateFab();
@@ -1004,7 +1023,7 @@ function bindAccount() {
 
     // 支持 #workspace / #model / #logs 直达，方便单独预览某一页
     const hash = String(location.hash || '').replace('#', '');
-    if (hash && ['dashboard', 'workspace', 'model', 'logs'].indexOf(hash) !== -1) {
+    if (hash && ['dashboard', 'workspace', 'settings', 'about'].indexOf(hash) !== -1) {
       currentPage = '';
       goto(hash);
     }

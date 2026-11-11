@@ -172,7 +172,7 @@
   }
 
   let state = {
-    seed: '#4C6FFF',
+    seed: '#569BEA',
     dark: false,
     contrast: 'standard',
   };

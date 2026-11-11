@@ -15,7 +15,7 @@ function readCourseLinks() {
     const title = card.querySelector('h3, h4, .course-name, .courseName, a[title]');
     const name = (title?.getAttribute('title') || title?.textContent || a.getAttribute('title') || a.textContent || card.querySelector('img')?.alt || '').replace(/\s+/g, ' ').trim();
     if (!name || /^(课程已结束|进入课程|查看课程)$/.test(name)) return [];
-    return [{ url: u.href, name: name.slice(0, 180) }];
+    const img=card.querySelector('img');let cover=img?.currentSrc||img?.getAttribute('data-original')||img?.getAttribute('data-src')||img?.src||'';try{cover=new URL(cover,location.href).href}catch{cover=''};return [{ url: u.href, name: name.slice(0, 180),cover }];
   });
 }
 function readChallenge() {
@@ -54,6 +54,7 @@ function enterStudyPage() {
 
 function createCoursePortal({ browser, interval = 1800 }) {
   const courses = new Map();
+  let profile={name:'',avatar:''};
   let selected = '', pendingStart = false, busy = false, refreshBusy = false, stopped = false;
   let state = { phase:'loading', selected:'', verification:null, error:'', count:0 };
   const attempted = new Set();
@@ -70,7 +71,7 @@ function createCoursePortal({ browser, interval = 1800 }) {
     for (const item of list) {
       if (!isPlatformUrl(item.url)) continue;
       const u = new URL(item.url), id = createHash('sha256').update([u.searchParams.get('courseid') || u.searchParams.get('courseId'),u.searchParams.get('clazzid') || u.searchParams.get('clazzId') || ''].join(':')).digest('hex').slice(0,24);
-      courses.set(id, {id,name:item.name,url:item.url});
+      courses.set(id, {id,name:item.name,url:item.url,cover:isPlatformUrl(item.cover)?item.cover:''});
     }
     state.count = courses.size;
   }
@@ -93,6 +94,9 @@ function createCoursePortal({ browser, interval = 1800 }) {
     if (busy || stopped) return; busy=true;
     try {
       const all = frames();if(all.length)state.error='';
+      for(const frame of all){if(!/^https?:\/\/i\.chaoxing\.com(?:[:/]|$)/.test(frame.url))continue;
+        try{const p=await frame.executeJavaScript(`(()=>{const e=document.querySelector('#personalName,.personalName,.user-name,#userName,#username,#space_nickname,.userInfo .name,.user-info .name');let name=(e?.textContent||e?.getAttribute('title')||'').trim();if(!name){const m=(document.body?.innerText||'').match(/账号[：:]\\s*([^\\n]{1,40})/);if(m)name=m[1].trim()}const img=document.querySelector('#userPhoto,.personalHead img,.personalPic img,.userInfo img,.user-info img,img[id*=head],img[class*=avatar],img[src*=portrait],img[src*=photo]');return{name:name.slice(0,60),avatar:img?.currentSrc||img?.src||''}})()`);if(p.name)profile={name:p.name,avatar:isPlatformUrl(p.avatar)?p.avatar:''};}catch{}}
+
       // The course list can be embedded in cross-origin portal frames.
       for (const frame of all) { try { remember(await read(frame,readCourseLinks)); } catch {} }
       let verification = null;
@@ -140,7 +144,7 @@ function createCoursePortal({ browser, interval = 1800 }) {
   }
   const timer=setInterval(tick,interval); timer.unref?.();
   return {
-    async list() { await tick(); return {ok:true,courses:[...courses.values()].map(({id,name})=>({id,name})),state:{...state}}; },
+    async list() { await tick(); return {ok:true,courses:[...courses.values()].map(({id,name,cover})=>({id,name,cover})),state:{...state},profile:{...profile}}; },
     status() { return {...state}; },
     async refresh() {
       if(refreshBusy)return {ok:false,error:'正在读取课程'};
