@@ -1,6 +1,6 @@
 {
   "name": "course-study-utility",
-  "version": "0.2.0-beta.3",
+  "version": "0.2.0-beta.4",
   "private": true,
   "description": "兼容学习通（超星平台）的个人第三方课程辅助工具，包含任务跟踪与AI视觉识题作答，非官方产品。",
   "main": "main.js",

@@ -1,17 +1,16 @@
-# 课程伴学工具 · 0.2.0-beta.3
+# 课程伴学工具 · 0.2.0-beta.4
 
 兼容学习通（超星平台）的 Windows 课程辅助工具。本快照属于 **0.2.0 Beta 预发布系列**，当前正式版本仍为 [0.1.9](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.1.9)。
 
-[下载本版](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.3) · [更新说明](docs/releases/0.2.0-beta.3.md) · [全部版本](https://github.com/Invariant-325/course-study-utility/releases)
+[下载本版](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.4) · [更新说明](docs/releases/0.2.0-beta.4.md) · [全部版本](https://github.com/Invariant-325/course-study-utility/releases)
 
 ## 本版更新
 
-- 新增异常与提醒卡片，分类显示登录失效、播放停滞、测验失败等情况。
-- 新增系统通知开关；当前该开关发送提醒，不会额外自动暂停执行器。
-- 新增按日学习统计：本机观察的播放时长、识别次数、模型返回的 Token 用量与平台确认任务数。
-- 新增系统托盘：显示窗口、暂停、继续、结束任务和退出程序。
+- 修复侧栏配置已经保存，但页面内配置缓存未更新的问题。
+- 修改自动做题、自动提交及异常通知等开关时，同时更新当前页面配置与本机持久化记录。
+- 未进入学习页时先保存设置，下次进入页面后加载。
 
-关闭窗口会收进托盘，任务继续运行；完全退出需使用托盘菜单的“退出程序”。播放时长是本机观察值，不能等同于平台认可的学习时长。
+保留 beta3 的托盘行为：关闭窗口不等于退出程序，更新安装前应从托盘菜单退出。
 
 ## 使用
 

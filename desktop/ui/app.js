@@ -308,10 +308,22 @@ function cfgGet(key, fallback) {
 function cfgSet(key, value) {
   try {
     App.kvSet(cfgKey(key), JSON.stringify(value));
-    return true;
   } catch (e) {
     return false;
   }
+  // 页面内 Config 只在启动时 load 一次，纯内存缓存；
+  // 这里顺手把新值推给它，否则要重新进入学习页才生效。
+  try {
+    App.evalMain(
+      '(function(){var a=window.__cxNaturalWatchApp;' +
+        'if(a&&a.config&&typeof a.config.set==="function"){' +
+        'try{a.config.set(' + JSON.stringify(key) + ',' + JSON.stringify(value) + ');}catch(e){}' +
+        '}})()'
+    ).catch(function () {});
+  } catch (e) {
+    /* 不在学习页时这里会失败，属正常；下次进入页面 load 时会从 kv 读到新值 */
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------- 自动做题 / 自动提交
