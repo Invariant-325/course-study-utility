@@ -28,7 +28,9 @@ if (!app.commandLine.hasSwitch('user-data-dir')) {
   fs.mkdirSync(legacyData, { recursive: true });
   app.setPath('userData', legacyData);
 }
-app.setName('课程伴学工具');
+// Electron includes this internal name in User-Agent. Keep it ASCII for web SDK encoding.
+// Localized window titles, installer metadata and shortcuts retain the product name.
+app.setName('CourseStudyUtility');
 const BOOT_LOG = path.join(app.getPath('userData'), 'logs', 'startup.log');
 function bootLog(msg) {
   const line = '[' + new Date().toISOString() + '] ' + msg;
