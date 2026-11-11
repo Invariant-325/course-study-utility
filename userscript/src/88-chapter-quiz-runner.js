@@ -216,7 +216,7 @@ const ChapterQuizRunner = (function () {
       }
 
       // ---- 加密题：走视觉 ----
-      if (q.encrypted) {
+      if (q.encrypted || window.__cxHost) {
         if (!visionCfg || !visionCfg.enabled) {
           S.suggestions[q.key] = {
             status: 'skip',
@@ -229,6 +229,7 @@ const ChapterQuizRunner = (function () {
           continue;
         }
 
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
         const image = QuizImage.render(q);
         if (!image.ok) {
           S.suggestions[q.key] = {

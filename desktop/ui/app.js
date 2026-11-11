@@ -146,12 +146,14 @@ const ANALYZE_FILL = `(async function(){
   if (!api) return { ok:false, reason:'no-api' };
   var quiz = api.adapter.parse(document);
   if (!quiz.count) return { ok:false, reason:'no-questions' };
+  if (!window.__cxHost) return { ok:false, reason:'App接口未就绪，请刷新后重试' };
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
   var results = [];
   var map = {};
   for (var i = 0; i < quiz.questions.length; i++) {
     var q = quiz.questions[i];
     var id = 'q_' + (i + 1);
-    if (!q.encrypted) { results.push({ id:id, num:q.num, ok:false, error:'题目未加密，暂不支持' }); continue; }
+    if (q.missingLetters || q.type === 'blank' || q.type === 'unknown') { results.push({ id:id, num:q.num, ok:false, error:'题型或选项不支持，请人工处理' }); continue; }
     var img = api.image.render(q);
     if (!img.ok) { results.push({ id:id, num:q.num, ok:false, error:'出图失败:' + img.reason }); continue; }
     if (img.unsupported && img.unsupported.length) { results.push({ id:id, num:q.num, ok:false, error:'含图片/公式，需人工' }); continue; }
@@ -204,10 +206,10 @@ async function pollQuiz() {
     const r = await App.evalQuiz(SCAN);
     if (r && r.ok && r.result && r.result.ok) {
       $('qInfo').textContent = '识别到 ' + r.result.count + ' 道题（加密 ' + r.result.encrypted + ' 道）';
-      $('qAuto').disabled = false;
+      $('qAuto').disabled = quizBusy;
     } else {
       $('qInfo').textContent = '请打开章节测验页面';
-      $('qAuto').disabled = false; // 允许点击后给出提示
+      $('qAuto').disabled = quizBusy;
     }
   } catch (e) {
     /* ignore */
@@ -223,14 +225,21 @@ $('qScan').onclick = async () => {
   pollQuiz();
 };
 
+let quizBusy = false;
 $('qAuto').onclick = async () => {
-  msg('qMsg', '正在识别（每题约 4-5 秒，请稍候）…', 'info');
+  if (quizBusy) return;
+  quizBusy = true;
+  $('qAuto').disabled = true;
+  try {
+  const env = await App.visionStatus();
+  if (!env.dshFound || !env.hasKey) return msg('qMsg', !env.dshFound ? '未找到 DeepSeek Harness，请先安装或配置 DSH_CLI。' : '未找到 API Key，请配置用户自己的模型凭据。', 'err');
+  msg('qMsg', '正在逐题视觉识别，请稍候…', 'info');
   log('开始一键答题…');
   const t0 = Date.now();
   const r = await App.evalQuiz(ANALYZE_FILL);
   if (!r || !r.ok) return msg('qMsg', '调用失败：' + errText(r), 'err');
   const d = r.result;
-  if (!d || !d.ok) return msg('qMsg', '不在章节测验页面', 'err');
+  if (!d || !d.ok) return msg('qMsg', (d && d.reason) || '不在章节测验页面', 'err');
 
   lastAnswers = d.results || [];
   renderAnswers(lastAnswers);
@@ -243,6 +252,12 @@ $('qAuto').onclick = async () => {
   text += '\n核对上面的答案后，请在网页里手动点「提交」。';
   msg('qMsg', text, okN ? 'ok' : 'err');
   log('答题完成 ' + okN + '/' + d.total + '，' + secs + 's', okN ? 'ok' : 'err');
+  } catch (e) {
+    msg('qMsg', '识别失败：' + errText(e), 'err');
+  } finally {
+    quizBusy = false;
+    $('qAuto').disabled = false;
+  }
 };
 
 $('qSubmit').onclick = () => {
@@ -265,7 +280,8 @@ async function pollEnv() {
 async function pollPage() {
   try {
     const info = await App.pageInfo();
-    $('urlBox').textContent = info.url || '';
+    $('urlBox').textContent = info.error || (info.loading ? '加载中 · ' : '') + (info.url || '');
+    $('urlBox').title = info.error || info.url || '';
   } catch (e) {
     /* ignore */
   }

@@ -16,7 +16,7 @@ const QuizVision = (function () {
 
   function readConfig() {
     return {
-      enabled: Config.get('visionEnabled') === true,
+      enabled: !!window.__cxHost || Config.get('visionEnabled') === true,
       url: String(Config.get('visionBridgeUrl') || 'http://127.0.0.1:8788').replace(/\/+$/, ''),
       token: String(Config.get('visionBridgeToken') || ''),
       timeoutMs: Number(Config.get('visionTimeoutMs')) || 130000,
@@ -82,7 +82,9 @@ const QuizVision = (function () {
         allowedLetters: allowedLetters || [],
       });
 
-      const res = await gmPost(
+      // Desktop uses its built-in host, not the optional Tampermonkey HTTP bridge.
+      const nativeResult = window.__cxHost ? await window.__cxHost.askVision({ questionId, imageBase64: imageDataUrl, allowedLetters: allowedLetters || [] }) : null;
+      const res = nativeResult ? { status: 200, text: JSON.stringify(nativeResult) } : await gmPost(
         cfg.url + '/vision',
         { 'Content-Type': 'application/json', 'X-Vision-Token': cfg.token },
         body,
@@ -158,6 +160,10 @@ const QuizVision = (function () {
   async function health() {
     const cfg = readConfig();
     try {
+      if (window.__cxHost) {
+        const data = await window.__cxHost.visionStatus();
+        return { ok: data.dshFound && data.hasKey, data };
+      }
       const res = await new Promise(function (resolve, reject) {
         if (typeof GM_xmlhttpRequest !== 'function') return reject(new Error('no GM'));
         GM_xmlhttpRequest({

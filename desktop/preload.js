@@ -89,4 +89,30 @@ if (isAppUi) {
       }
     },
   });
+
+  // Sandboxed subframes have no Electron preload bridge. Relay only the fixed
+  // course API from platform frames; never expose require or enable Node there.
+  if (window === window.top && /(^|\.)(chaoxing|xuexitong)\.com$/i.test(location.hostname)) {
+    window.addEventListener('message', async event => {
+      const data = event.data;
+      let origin;
+      try { origin = new URL(event.origin); } catch { return; }
+      if (!/^https?:$/.test(origin.protocol) || !/(^|\.)(chaoxing|xuexitong)\.com$/i.test(origin.hostname)) return;
+      if (event.source === window || !event.source || !data || data.channel !== 'cx-host-request') return;
+      if (typeof data.id !== 'string' || data.id.length > 100 || !Array.isArray(data.args)) return;
+      const channels = { askVision: 'vision:ask', visionStatus: 'vision:status', xhr: 'net:xhr' };
+      try {
+        let result;
+        if (data.method === 'kvSet') {
+          ipcRenderer.send('kv:set', String(data.args[0]), data.args[1]); result = true;
+        } else {
+          if (!Object.prototype.hasOwnProperty.call(channels, data.method)) return;
+          result = await ipcRenderer.invoke(channels[data.method], ...data.args);
+        }
+        event.source.postMessage({ channel: 'cx-host-reply', id: data.id, result }, event.origin);
+      } catch {
+        try { event.source.postMessage({ channel: 'cx-host-reply', id: data.id, error: 'App 调用失败' }, event.origin); } catch {}
+      }
+    });
+  }
 }

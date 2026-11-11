@@ -21,7 +21,11 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
   console.error('GUI startup requires Electron. Clear ELECTRON_RUN_AS_NODE and launch again.');
   process.exit(1);
 }
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog } = electron;
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, safeStorage } = electron;
+const { createCourseBrowser } = require("./course-browser.cjs");
+const { retainLogin } = require("./login-session.cjs");
+const { isPlatformUrl } = require("./browser-policy.cjs");
+const { installFrameBridge } = require("./frame-bridge.cjs");
 // Preserve the established data directory across the display-name change.
 if (!app.commandLine.hasSwitch('user-data-dir')) {
   const legacyData = path.join(app.getPath('appData'), 'chaoxing-helper-desktop');
@@ -30,6 +34,7 @@ if (!app.commandLine.hasSwitch('user-data-dir')) {
 }
 // Electron includes this internal name in User-Agent. Keep it ASCII for web SDK encoding.
 // Localized window titles, installer metadata and shortcuts retain the product name.
+app.setPath('sessionData', app.getPath('userData'));
 app.setName('CourseStudyUtility');
 const BOOT_LOG = path.join(app.getPath('userData'), 'logs', 'startup.log');
 function bootLog(msg) {
@@ -58,11 +63,10 @@ process.on('unhandledRejection', (e) => {
 });
 bootLog('boot; version=' + app.getVersion() + '; electron=' + process.versions.electron);
 
-const TOP_BAR = 56;
-const SIDE_PANEL = 340;
-
 let win = null;
-let view = null;
+let browser = null;
+let loginSession = null;
+let closingWindow = false;
 let store = {};
 let storeFile = '';
 let saveTimer = null;
@@ -160,105 +164,55 @@ function collectFrames(frame, out) {
   }
 }
 
-function injectAllFrames() {
-  if (!view || view.webContents.isDestroyed() || !injectCode) return;
+function injectAllFrames(wc) {
+  if (!wc || wc.isDestroyed() || !injectCode || !isPlatformUrl(wc.getURL())) return;
   const frames = [];
-  try {
-    collectFrames(view.webContents.mainFrame, frames);
-  } catch (e) {
-    return;
-  }
+  try { collectFrames(wc.mainFrame, frames); } catch { return; }
+  const topOrigin = new URL(wc.getURL()).origin;
+  const frameSetup = '(' + installFrameBridge.toString() + ')(' + JSON.stringify(topOrigin) + ',' + JSON.stringify(store) + ');';
   for (const frame of frames) {
-    let url = '';
     try {
-      url = String(frame.url || '');
-    } catch (e) {
-      continue;
-    }
-    if (!/chaoxing\.com|xuexitong\.com/i.test(url)) continue;
-    frame.executeJavaScript(injectCode, true).catch(() => {});
+      if (!isPlatformUrl(frame.url)) continue;
+      frame.executeJavaScript(frameSetup + injectCode, true).catch(() => bootLog('frame-injection-retry-needed'));
+    } catch { /* navigation may detach the frame */ }
   }
 }
 
-// ---------------------------------------------------------------- 布局
-function layout() {
-  if (!win || !view) return;
-  const b = win.getContentBounds();
-  view.setBounds({
-    x: 0,
-    y: TOP_BAR,
-    width: Math.max(200, b.width - SIDE_PANEL),
-    height: Math.max(200, b.height - TOP_BAR),
-  });
+function flushStore() {
+  clearTimeout(saveTimer);
+  if (!storeFile) return;
+  fs.mkdirSync(path.dirname(storeFile), { recursive: true });
+  fs.writeFileSync(storeFile, JSON.stringify(store, null, 2), 'utf8');
 }
 
-function createWindow() {
+async function createWindow() {
+  const persist = session.fromPartition('persist:chaoxing');
+  loginSession = await retainLogin(persist, app.getPath('userData'), safeStorage, bootLog);
   win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 960,
-    minHeight: 640,
-    title: '课程伴学工具',
-    backgroundColor: '#0f1218',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: false,
-    },
+    width: 1440, height: 900, minWidth: 960, minHeight: 640,
+    title: '课程伴学工具', backgroundColor: '#0f1218', autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
+      nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
-
   win.loadFile(path.join(__dirname, 'ui', 'index.html')).catch(fatalStartup);
   win.webContents.on('did-finish-load', () => bootLog('control-panel-loaded'));
   win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
-
-  const persist = session.fromPartition('persist:chaoxing');
-  view = new WebContentsView({
-    webPreferences: {
-      session: persist,
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js'),
-      // 切到后台不节流，保证视频与轮询继续
-      backgroundThrottling: false,
-    },
+  browser = createCourseBrowser({ win, WebContentsView, ses: persist,
+    preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog });
+  // Opening the course entry directly lets the platform perform its normal SSO.
+  browser.home();
+  win.on('close', event => {
+    if (closingWindow) return;
+    event.preventDefault();
+    closingWindow = true;
+    (async () => {
+      try { flushStore(); await loginSession.flush(); }
+      catch { bootLog('close-save-failed'); }
+      browser.close();
+      win.destroy();
+    })();
   });
-  win.contentView.addChildView(view);
-  layout();
-
-  const wc = view.webContents;
-  wc.on('render-process-gone', (_event, details) => bootLog('web-process-gone: ' + details.reason));
-  wc.on('did-finish-load', () => bootLog('web-page-loaded'));
-  wc.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
-    if (isMainFrame && code !== -3) bootLog('web-load-failed: ' + code + ' ' + description);
-  });
-
-  wc.setWindowOpenHandler(({ url }) => {
-    try {
-      view.webContents.loadURL(url);
-    } catch (e) {
-      /* ignore */
-    }
-    return { action: 'deny' };
-  });
-
-  wc.on('dom-ready', () => setTimeout(injectAllFrames, 300));
-  wc.on('did-frame-finish-load', () => setTimeout(injectAllFrames, 200));
-  wc.on('did-navigate', () => setTimeout(injectAllFrames, 600));
-
-  wc.on('page-title-updated', (event, title) => {
-    if (win && !win.isDestroyed()) win.setTitle('课程伴学工具');
-  });
-
-  view.webContents.loadURL('https://mooc1.chaoxing.com/').catch((e) => bootLog('homepage-load-failed: ' + e.code));
-
-  win.on('resize', layout);
-  win.on('closed', () => {
-    if (view && !view.webContents.isDestroyed()) view.webContents.close();
-    win = null;
-    view = null;
-  });
+  win.on('closed', () => { win = null; browser = null; });
   return win;
 }
 
@@ -304,8 +258,8 @@ function resolveApiKey() {
     try {
       if (!p || !fs.existsSync(p)) continue;
       const text = fs.readFileSync(p, 'utf8');
-      const m = text.match(/^\s*DEEPSEEK_API_KEY:\s*(\S+)\s*$/m);
-      if (m && m[1]) return m[1];
+      const m = text.match(/^\s*DEEPSEEK_API_KEY:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/m);
+      if (m) return m[1] || m[2] || m[3] || '';
     } catch (e) {
       /* ignore */
     }
@@ -324,7 +278,7 @@ const SYSTEM_TASK = [
   '5. 只输出合法 JSON，不输出 Markdown、代码围栏、前言或额外说明。',
   '6. 选项使用图片中对应的 A、B、C、D 等标识。',
   '7. 不确定时允许返回 null，不得强行猜测。',
-  '8. 不调用任何执行工具，不操作网页，不修改任何文件。',
+  '8. 仅允许使用图片查看或只读文件工具读取指定题目截图；不执行命令，不操作网页，不修改任何文件。',
   '',
   '统一返回格式：',
   '{"questionId":"q_001","type":"single","answers":["B"],"status":"ok"}',
@@ -360,14 +314,19 @@ function runHeadless(task, timeoutMs) {
       const inFd = fs.openSync(taskFile, 'r');
       const outFd = fs.openSync(outFile, 'w');
       const errFd = fs.openSync(errFile, 'w');
-      child = spawn(
-        'cmd.exe',
-        ['/c', cli, '--profile', 'headless', '--permission-mode', 'read-only', '--approval-policy', 'never', '-'],
+      const cliDir = path.dirname(cli);
+      const host = path.resolve(cliDir, '../../../../DeepSeek Harness.exe');
+      const entry = path.resolve(cliDir, '../../../app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js');
+      const nativeHost = fs.existsSync(host) && fs.existsSync(entry);
+      const args = ['--profile', 'headless', '--permission-mode', 'read-only', '--approval-policy', 'never', '-'];
+      child = spawn(nativeHost ? host : (process.env.ComSpec || 'cmd.exe'),
+        nativeHost ? ['--expose-internals', entry, ...args] : ['/d', '/s', '/c', '""' + cli + '" ' + args.join(' ') + '"'],
         {
           cwd: app.getPath('userData'),
-          env: Object.assign({}, process.env, { DSH_HOME: dshHomeDir() }),
+          env: Object.assign({}, process.env, { DSH_HOME: dshHomeDir(), DEEPSEEK_API_KEY: resolveApiKey(), ELECTRON_RUN_AS_NODE: '1' }),
           stdio: [inFd, outFd, errFd],
           windowsHide: true,
+          windowsVerbatimArguments: !nativeHost,
         }
       );
       child.on('exit', () => {
@@ -404,13 +363,13 @@ function runHeadless(task, timeoutMs) {
 }
 
 async function askVision(payload) {
-  const questionId = String((payload && payload.questionId) || '').slice(0, 80);
+  const questionId = String((payload && payload.questionId) || '').slice(0, 512);
   const imageBase64 = String((payload && payload.imageBase64) || '');
   const allowedLetters = Array.isArray(payload && payload.allowedLetters)
     ? payload.allowedLetters.map((x) => String(x).toUpperCase()).slice(0, 8)
     : [];
 
-  if (!questionId || !/^[\w\-:.]{1,80}$/.test(questionId)) {
+  if (!questionId || /[\x00-\x1f]/.test(questionId)) {
     return { ok: false, status: 'unreadable', error: 'INVALID_QUESTION_ID' };
   }
   if (!resolveApiKey()) return { ok: false, status: 'unreadable', error: 'MISSING_CREDENTIAL' };
@@ -432,7 +391,7 @@ async function askVision(payload) {
 
   const tmp = path.join(app.getPath('temp'), 'cx-vision');
   fs.mkdirSync(tmp, { recursive: true });
-  const imgPath = path.join(tmp, 'req-' + questionId.replace(/[^\w\-]/g, '_') + '-' + Date.now() + '.png');
+  const imgPath = path.join(tmp, 'req-' + require('node:crypto').randomUUID() + '.png');
   fs.writeFileSync(imgPath, buf);
 
   const task = [SYSTEM_TASK, '', '题目 ID：' + questionId, '题目截图（绝对路径）：' + imgPath, '请读取该图片并作答。'].join('\n');
@@ -454,6 +413,7 @@ async function askVision(payload) {
   }
 
   const errors = [];
+  if (String(parsed.questionId || '') !== questionId) errors.push('QUESTION_ID_MISMATCH');
   let answers = Array.isArray(parsed.answers) ? parsed.answers.map((x) => String(x).toUpperCase()) : [];
   answers = answers.filter((a) => /^[A-H]$/.test(a));
   const allowed = new Set(allowedLetters);
@@ -465,7 +425,7 @@ async function askVision(payload) {
   answers = Array.from(new Set(answers));
   const type = String(parsed.type || 'unknown').toLowerCase();
   const status = String(parsed.status || 'unreadable').toLowerCase();
-  if ((type === 'single' || type === 'true_false') && answers.length > 1) answers = answers.slice(0, 1);
+  if ((type === 'single' || type === 'true_false' || type === 'judge') && answers.length > 1) answers = answers.slice(0, 1);
 
   return {
     ok: errors.length === 0 && status === 'ok' && answers.length > 0,
@@ -528,24 +488,11 @@ function registerIpc() {
 
   ipcMain.on('menu:register', (event, label) => bootLog('[menu] ' + label));
 
-  ipcMain.handle('web:goto', async (event, url) => {
-    if (!view) return { ok: false };
-    try { view.webContents.loadURL(url); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message) }; }
-  });
-  ipcMain.handle('web:reload', async () => {
-    if (view) view.webContents.reload();
-    return { ok: true };
-  });
-  ipcMain.handle('web:back', async () => {
-    if (!view) return { ok: false };
-    try {
-      if (view.webContents.navigationHistory.canGoBack()) view.webContents.navigationHistory.goBack();
-    } catch (e) {
-      /* ignore */
-    }
-    return { ok: true };
-  });
+  ipcMain.handle('web:goto', (_event, url) => browser ? browser.goto(String(url)) : { ok: false });
+  ipcMain.handle('web:reload', () => browser ? browser.reload() : { ok: false });
+  ipcMain.handle('web:back', () => browser ? browser.back() : { ok: false });
   ipcMain.handle('web:eval', async (event, code) => {
+    const view = browser && browser.view;
     if (!view) return { ok: false, error: 'no-view' };
     try {
       return { ok: true, result: await view.webContents.executeJavaScript(String(code), true) };
@@ -554,12 +501,20 @@ function registerIpc() {
     }
   });
   ipcMain.handle('web:evalQuiz', async (event, code) => {
+    const view = browser && browser.view;
     if (!view) return { ok: false, error: 'no-view' };
     const frames = [];
     try { collectFrames(view.webContents.mainFrame, frames); } catch (e) { return { ok: false, error: 'frame-enum' }; }
-    const target = frames.find((f) => {
-      try { return /doHomeWorkNew|work\/doWork/i.test(String(f.url || '')); } catch (e) { return false; }
-    });
+    // Locate the actual adapter/DOM, including top-level and nested quiz pages.
+    // URL names alone miss new routes and can select an empty wrapper iframe.
+    let target;
+    for (const frame of frames) {
+      try {
+        if (!isPlatformUrl(frame.url)) continue;
+        const ready = await frame.executeJavaScript('!!(window.__cxChapterQuiz && window.__cxChapterQuiz.parse().count)', true);
+        if (ready) { target = frame; break; }
+      } catch { /* detached or not ready */ }
+    }
     if (!target) return { ok: false, error: 'no-quiz-frame' };
     try {
       return { ok: true, result: await target.executeJavaScript(String(code), true) };
@@ -567,20 +522,8 @@ function registerIpc() {
       return { ok: false, error: String(e && e.message) };
     }
   });
-  ipcMain.handle('web:info', async () => {
-    if (!view) return { url: '', title: '' };
-    try {
-      return { url: view.webContents.getURL(), title: view.webContents.getTitle() };
-    } catch (e) {
-      return { url: '', title: '' };
-    }
-  });
-
-  // 打开学习通首页 / 课程列表
-  ipcMain.handle('web:home', async () => {
-    if (!view) return { ok: false };
-    try { view.webContents.loadURL('https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu'); return { ok: true }; } catch (e) { return { ok: false }; }
-  });
+  ipcMain.handle('web:info', () => browser ? browser.info() : { url: '', title: '' });
+  ipcMain.handle('web:home', () => browser ? browser.home() : { ok: false });
 }
 
 // ---------------------------------------------------------------- 启动
@@ -595,7 +538,7 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     bootLog('ready');
     loadStore();
     const userscript = loadUserscript();
@@ -603,9 +546,9 @@ if (!gotLock) {
     injectCode = buildInjectCode(userscript);
     registerIpc();
     Menu.setApplicationMenu(null);
-    createWindow();
+    await createWindow();
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) { closingWindow = false; createWindow().catch(fatalStartup); }
     });
   }).catch(fatalStartup);
 
@@ -614,4 +557,4 @@ if (!gotLock) {
   });
 }
 
-app.on('before-quit', () => bootLog('quit'));
+app.on('before-quit', () => { bootLog('quit'); flushStore(); });

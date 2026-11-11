@@ -6,7 +6,7 @@ for (const f of ['CourseStudyUtility.exe', 'locales/zh-CN.pak', 'locales/en-US.p
   if (!fs.existsSync(path.join(dir, f))) throw new Error('Missing: ' + f);
 }
 const archive = path.join(dir, 'resources/app.asar');
-for (const f of ['main.js','preload.js','ui/index.html','ui/app.js','userscript/chaoxing-helper.user.js']) {
+for (const f of ['browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs','main.js','preload.js','ui/index.html','ui/app.js','userscript/chaoxing-helper.user.js']) {
   const content = asar.extractFile(archive, f);
   if (!content.length || !content.equals(fs.readFileSync(path.resolve(__dirname, '..', f)))) throw new Error('Archive mismatch: ' + f);
 }
