@@ -52,7 +52,7 @@ docs/             使用说明、更新记录和历史核验记录
 
 ## 开发与许可
 
-DeepSeek 和 Codex 参与了代码编写、排错及打包，版本发布由项目维护者管理。欢迎提交能复现的问题，说明使用版本、操作步骤和报错即可；请不要附带密码、API Key、Cookie 或完整的登录回调地址。
+项目由 Invariant-325 维护和发布，使用 DeepSeek 和 Codex 辅助编程、调试与打包。Issue 需包含应用版本、复现步骤、预期行为、实际结果和错误日志。密码、API Key、Cookie 及登录回调参数须脱敏。
 
 项目采用 [GPL-3.0-only](LICENSE)。修改后再分发须遵守 GPL 的源码提供与许可要求。另见 [开源声明](OPEN_SOURCE.md)、[第三方组件说明](NOTICE.md) 和 [免责声明](DISCLAIMER.md)。
 
