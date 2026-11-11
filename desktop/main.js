@@ -199,7 +199,7 @@ async function createWindow() {
   win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
     preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog });
-  // Opening the course entry directly lets the platform perform its normal SSO.
+  // Use the portal's own course-menu handler after normal platform login.
   browser.home();
   win.on('close', event => {
     if (closingWindow) return;

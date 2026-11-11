@@ -33,6 +33,8 @@ const quiz = `<!doctype html><meta charset="utf-8"><title>Quiz</title>
 <ul class="Zy_ulTop">${['A','B','C','D'].map((letter,i)=>`<li qid="fixture1" role="radio" aria-checked="false" onclick="for(const e of this.parentElement.children)e.setAttribute('aria-checked','false');this.setAttribute('aria-checked','true')"><span data="${['D','A','C','B'][i]}">${letter}</span><a class="after">${i+3}</a></li>`).join('')}</ul></div><button class="btnSubmit" onclick="window.submitted=true">Submit</button>`;
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (req.url === '/base' && req.headers.host.startsWith('i.chaoxing.com')) return res.end(`<a dataurl="${'http://unit.chaoxing.com:' + port}/courses?origin=platform&amp;proof=signed-demo" onclick="location.href=this.getAttribute('dataurl')">我的课程</a>`);
+  if (req.url === '/base?code=callback-demo') return res.end('<a href="/courses">课程</a>');
   if (req.url === '/quiz') return res.end(quiz);
   if (req.url === '/quiz-encrypted') return res.end(quiz.replace('class="fontLabel"', 'class="fontLabel font-cxsecret"'));
   if (req.url === '/wrapper') return res.end(`<iframe src="http://quiz.xuexitong.com:${port}/outer"></iframe>`);
@@ -55,7 +57,11 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     await app.whenReady();
     const ses = session.fromPartition('persist:chaoxing');
-    ses.webRequest.onBeforeRequest({ urls: ['https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu*'] }, (_details, cb) => cb({ redirectURL: `http://unit.chaoxing.com:${port}/courses` }));
+    let invalidCourseRequestCount = 0;
+    ses.webRequest.onBeforeRequest({ urls: ['https://i.chaoxing.com/base*', 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu*'] }, (details, cb) => {
+      if (details.url.includes('/mycourse/stu')) { invalidCourseRequestCount++; cb({cancel:true}); }
+      else cb({ redirectURL: `http://i.chaoxing.com:${port}/base` });
+    });
     const win = await until(() => BrowserWindow.getAllWindows()[0], 'window');
     const panel = win.webContents;
     await until(() => panel.executeJavaScript('!!window.__cxApp && document.readyState === "complete"'), 'panel ready');
@@ -83,8 +89,18 @@ server.listen(0, '127.0.0.1', async () => {
       await ses.cookies.set({ url: base, name: '_uid', value: '12345', domain: '.chaoxing.com' });
       // A known authenticated portal landing redirects once; verification routes don't.
       await goto(`http://i.chaoxing.com:${port}/base`);
-      await until(async () => (await info()).url.endsWith('/courses'), 'post-login course navigation');
-      report('authenticated landing goes to courses');
+      await until(async () => (await info()).url.includes('/courses?origin=platform&proof=signed-demo'), 'post-login native menu navigation');
+      assert.equal(invalidCourseRequestCount, 0);
+      report('portal menu preserves platform-generated URL parameters; no parameterless course request');
+      await goto(`http://i.chaoxing.com:${port}/base?code=callback-demo`);await pause(600);
+      assert((await info()).url.endsWith('/base?code=callback-demo'));
+      report('login callback is not interrupted by menu routing');
+      await goto(`http://i.chaoxing.com:${port}/base/index`);await pause(600);
+      assert((await info()).url.endsWith('/base/index'));
+      report('portal without course menu stays put instead of guessing a course URL');
+      await goto(base + '/mooc2-ans/mycourse/stu?courseid=1&clazzid=2&enc=fixture');await pause(300);
+      assert((await info()).url.endsWith('/mooc2-ans/mycourse/stu?courseid=1&clazzid=2&enc=fixture'));
+      report('valid course detail keeps complete query parameters');
       await goto(base + '/face/verify'); await pause(300);
       assert((await info()).url.endsWith('/face/verify'));
       report('verification route not interrupted');

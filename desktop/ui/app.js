@@ -29,7 +29,7 @@ function errText(e) {
 }
 
 // ---------------------------------------------------------------- 顶部导航
-$('btnHome').onclick = () => App.goto('https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu');
+$('btnHome').onclick = () => App.home();
 $('btnBack').onclick = () => App.back();
 $('btnReload').onclick = () => App.reload();
 

@@ -7,7 +7,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
 require('../main.js');
 app.whenReady().then(async () => {
   session.fromPartition('persist:chaoxing').webRequest.onBeforeRequest(
-    {urls:['https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu*']},
+    {urls:['https://i.chaoxing.com/base*']},
     (_details,cb) => cb({cancel:true}));
   try {
     let win;

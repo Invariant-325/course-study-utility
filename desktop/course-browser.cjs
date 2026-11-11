@@ -1,4 +1,4 @@
-const { COURSE_URL, isPlatformUrl, isLandingUrl } = require('./browser-policy.cjs');
+const { PORTAL_URL, isPlatformUrl, isLandingUrl, clickCourseMenu } = require('./browser-policy.cjs');
 
 function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }) {
   const pages = [];
@@ -18,6 +18,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
     page.webContents.invalidate();
   }
   function dispose(page) {
+    clearTimeout(states.get(page).routeTimer);
     const index = pages.indexOf(page);
     if (index >= 0) pages.splice(index, 1);
     if (active === page) {
@@ -46,14 +47,23 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
     state.lastGood = wc.getURL();
     if (page === active) { layout(); wc.invalidate(); }
     inject(wc);
-    if (!isLandingUrl(wc.getURL()) || state.routing) return;
-    const current = wc.getURL();
-    const cookies = await ses.cookies.get({ url: current });
-    const authenticated = cookies.some(c => /^(?:_uid|uid)$/i.test(c.name) && /^\d+$/.test(c.value) && Number(c.value) > 0);
-    if (!authenticated || wc.isDestroyed() || wc.getURL() !== current) return;
+    await routeToCourses(page);
+  }
+  async function routeToCourses(page) {
+    const wc = page.webContents;
+    const state = states.get(page);
+    if (closing || page !== active || wc.isDestroyed() || !isLandingUrl(wc.getURL()) || state.menuOpened || state.routing) return;
+    const epoch = state.epoch;
     state.routing = true;
-    await load(page, COURSE_URL);
-    state.routing = false;
+    try {
+      const clicked = await wc.executeJavaScript('(' + clickCourseMenu.toString() + ')()', true);
+      if (wc.isDestroyed() || state.epoch !== epoch) return;
+      state.menuOpened = clicked;
+      if (!clicked && ++state.routeAttempts < 12) {
+        clearTimeout(state.routeTimer);
+        state.routeTimer = setTimeout(() => routeToCourses(page).catch(() => log('course-menu-unavailable')), 500);
+      }
+    } finally { state.routing = false; }
   }
   function create(options = {}) {
     const page = new WebContentsView({ ...(options.webContents ? {webContents: options.webContents} : {}), webPreferences: { ...options.webPreferences,
@@ -61,7 +71,8 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
       nodeIntegrationInSubFrames: false, sandbox: true, backgroundThrottling: false } });
     page.setBackgroundColor('#ffffff');
     const wc = page.webContents;
-    const state = { error: '', lastGood: COURSE_URL, routing: false, recovered: false };
+    const state = { error: '', lastGood: PORTAL_URL, routing: false, recovered: false,
+      epoch: 0, menuOpened: false, routeAttempts: 0, routeTimer: null };
     states.set(page, state);
     pages.push(page);
     activate(page);
@@ -77,6 +88,13 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
     });
     wc.on('will-navigate', (event, url) => {
       if (url !== 'about:blank' && !/^https?:\/\//i.test(url)) event.preventDefault();
+    });
+    wc.on('did-start-navigation', (_e, _url, inPlace, mainFrame) => {
+      if (!mainFrame || inPlace) return;
+      clearTimeout(state.routeTimer);
+      state.epoch++;
+      state.menuOpened = false;
+      state.routeAttempts = 0;
     });
     wc.on('did-finish-load', () => { log('web-page-loaded'); afterLoad(page).catch(() => log('web-ready-failed')); });
     wc.on('did-frame-finish-load', () => inject(wc));
@@ -102,7 +120,15 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
   return {
     get view() { return active; },
     goto(url) { return load(active, url); },
-    home() { return load(active, COURSE_URL); },
+    async home() {
+      const state = states.get(active);
+      if (isLandingUrl(active.webContents.getURL())) {
+        state.menuOpened = false; state.routeAttempts = 0;
+        await routeToCourses(active);
+        return { ok: true };
+      }
+      return load(active, PORTAL_URL);
+    },
     reload() { if (active.webContents.isCrashed()) return load(active, states.get(active).lastGood); active.webContents.reload(); return { ok: true }; },
     back() {
       const history = active.webContents.navigationHistory;
@@ -111,7 +137,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
         if (/^https?:\/\//i.test(entries[i].url)) { history.goToIndex(i); layout(); return { ok: true }; }
       }
       if (pages.length > 1) { dispose(active); return { ok: true }; }
-      return load(active, COURSE_URL);
+      return load(active, PORTAL_URL);
     },
     info() { const wc = active.webContents; return { url: wc.getURL(), title: wc.getTitle(), loading: wc.isLoading(), error: states.get(active).error, canGoBack: pages.length > 1 || wc.navigationHistory.canGoBack() }; },
     close() { closing = true; for (const page of [...pages].reverse()) dispose(page); },
