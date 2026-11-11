@@ -9,7 +9,7 @@ const archive = path.join(dir, 'resources/app.asar');
 // 新界面把脚本拆到了 ui/scripts、样式拆到了 ui/styles，这里按实际结构校验。
 // 注意：Windows 上 asar.extractFile 只认反斜杠路径，用 / 会报 not found。
 for (const f of [
-  'browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
+  'course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
   'main.js','preload.js',
   'ui/index.html',
   'ui/scripts/app.js','ui/scripts/theme.js',

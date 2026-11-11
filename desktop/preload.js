@@ -19,6 +19,12 @@ const isAppUi = (() => {
 if (isAppUi) {
   contextBridge.exposeInMainWorld('__cxApp', {
     windowControl: (action) => ipcRenderer.invoke('window:control', action),
+    coursesList: () => ipcRenderer.invoke('courses:list'),
+    coursesRefresh: () => ipcRenderer.invoke('courses:refresh'),
+    courseOpen: id => ipcRenderer.invoke('courses:open', id),
+    courseStatus: () => ipcRenderer.invoke('courses:status'),
+    courseStart: () => ipcRenderer.invoke('courses:start'),
+    courseCancelStart: () => ipcRenderer.invoke('courses:cancel'),
     // 网页控制
     goto: (url) => ipcRenderer.invoke('web:goto', url),
     toggleWeb: (force) => ipcRenderer.invoke('web:toggle', force),

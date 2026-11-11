@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="styles/layout.css" />
 <link rel="stylesheet" href="styles/components.css" />
 <link rel="stylesheet" href="styles/pages.css" />
+<style>#verificationPanel[hidden]{display:none!important}#verificationPanel{position:fixed;right:24px;top:60px;z-index:85;max-width:350px;padding:20px;background:var(--md-sys-color-surfaceContainerHigh);border:1px solid var(--md-sys-color-outlineVariant);border-radius:16px;box-shadow:0 8px 30px #0003}#verificationImage{display:block;width:240px;max-width:100%;height:auto;margin:12px auto}#verificationImage[hidden]{display:none}</style>
 </head>
 <body>
 <div id="mica"></div>
@@ -149,7 +150,8 @@
           <div class="htext">
             <h1 class="t-headline-large">总览</h1>
             <p class="t-body-medium t-on-surface-variant">
-              已登录，读取到 <strong id="courseCount">4</strong> 门课程。选择一门开始，或让按队列自动执行。
+              已读取 <strong id="courseCount">0</strong> 门课程。选择课程后可在后台进入学习页。
+              <span id="backgroundStatus">后台正在读取课程…</span>
             </p>
           </div>
           <div class="hact">
@@ -364,7 +366,14 @@
 </button>
 
 <!-- 浮层 -->
-<div id="layers">
+<div id="verificationPanel" hidden>
+    <h2>平台扫码验证</h2><p id="verificationText"></p>
+    <img id="verificationImage" alt="平台提供的验证二维码" hidden />
+    <p>二维码仅在本机临时显示，不保存到日志。</p>
+    <button class="btn outlined" id="showVerificationWeb">显示原网页</button>
+    <button class="btn text" id="hidePlatformWeb">隐藏原网页</button>
+  </div>
+  <div id="layers">
   <div class="scrim" id="scrim">
     <div class="dialog" role="dialog" aria-modal="true">
       <h2 class="t-headline-small" id="dlgTitle">开启夜间模式</h2>

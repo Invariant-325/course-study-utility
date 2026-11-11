@@ -69,6 +69,8 @@ let isQuitting = false;
 
 let win = null;
 let browser = null;
+let coursePortal = null;
+const { createCoursePortal } = require('./course-portal.cjs');
 let loginSession = null;
 let closingWindow = false;
 let store = {};
@@ -212,7 +214,8 @@ async function createWindow() {
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
     preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog });
   // Use the portal's own course-menu handler after normal platform login.
-  browser.home();
+  coursePortal = createCoursePortal({ browser });
+  coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
   win.on('close', event => {
     // 收起窗口 = 收进托盘（不退出），这样刷课能继续
     if (!isQuitting) {
@@ -227,7 +230,7 @@ async function createWindow() {
     (async () => {
       try { flushStore(); await loginSession.flush(); }
       catch { bootLog('close-save-failed'); }
-      try { browser.close(); } catch (e) {}
+      try { coursePortal?.close(); browser.close(); } catch (e) {}
       win.destroy();
     })();
   });
@@ -562,6 +565,12 @@ async function askVision(payload) {
 
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
+  ipcMain.handle('courses:list', () => coursePortal ? coursePortal.list() : {ok:true,courses:[],state:{phase:'loading'}});
+  ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
+  ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
+  ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
+  ipcMain.handle('courses:start', () => coursePortal ? coursePortal.start() : {ok:false});
+  ipcMain.handle('courses:cancel', () => {coursePortal?.cancelStart();return {ok:true};});
   ipcMain.handle('window:control', (_event, action) => {
     if (!win || win.isDestroyed()) return { ok: false, error: 'NO_WINDOW' };
     if (action === 'minimize') win.minimize();

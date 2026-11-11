@@ -14,6 +14,8 @@
 
   // ---------------- 运行时数据（由真实 IPC 填充） ----------------
   let COURSES = [];
+  let selectedCourse = '';
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let CHAPTERS = [];
   let QUEUE = [];
   let ISSUES = [];
@@ -101,11 +103,11 @@ function renderSideCourses() {
   const box = $('#sideCourses');
   if (!box) return;
   box.innerHTML = COURSES.map((c) => {
-    const rel = c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需人工' : '未开始';
+    const rel = c.total == null ? '未读取章节' : c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需人工' : '未开始';
     return (
-      '<button class="lnk" data-course="' + c.id + '" data-state="' + c.state + '">' +
+      '<button class="lnk" data-course="' + escapeHtml(c.id) + '" data-state="' + c.state + '">' +
         '<span class="dot"></span>' +
-        '<span class="lt">' + c.name + '</span>' +
+        '<span class="lt">' + escapeHtml(c.name) + '</span>' +
         '<span class="rt">' + rel + '</span>' +
       '</button>'
     );
@@ -220,6 +222,8 @@ function bindAccount() {
   }
 
   function stateChip(state) {
+    if (state === 'selected') return '<span class="chip tone-primary">已选择</span>';
+    if (state === 'unknown') return '<span class="chip">未读取章节</span>';
     if (state === 'done') return '<span class="chip tone-ok" style="height:26px"><span class="dot"></span>已完成</span>';
     if (state === 'doing') return '<span class="chip tone-primary" style="height:26px"><span class="dot"></span>进行中</span>';
     if (state === 'manual') return '<span class="chip tone-warn" style="height:26px"><span class="dot"></span>需人工</span>';
@@ -232,17 +236,17 @@ function bindAccount() {
     grid.innerHTML = COURSES.map((c) => {
       const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
       return (
-        '<button class="card filled clickable course-card" data-course="' + c.id + '">' +
+        '<button class="card filled clickable course-card" data-course="' + escapeHtml(c.id) + '">' +
           '<div class="cc-top">' +
             '<span class="cc-icon">' + courseIcon() + '</span>' +
-            '<span class="cc-name">' + c.name + '</span>' +
+            '<span class="cc-name">' + escapeHtml(c.name) + '</span>' +
           '</div>' +
           '<div class="cc-meta">' + stateChip(c.state) +
-            '<span>' + c.done + '/' + c.total + ' 任务点</span>' +
+            '<span>' + (c.total == null ? '点击读取章节' : c.done + '/' + c.total + ' 任务点') + '</span>' +
           '</div>' +
           '<div class="cc-foot">' +
             '<div class="progress"><i style="width:' + pct + '%"></i></div>' +
-            '<span class="cc-pct">' + pct + '%</span>' +
+            '<span class="cc-pct">' + (c.total == null ? '—' : pct + '%') + '</span>' +
           '</div>' +
         '</button>'
       );
@@ -250,8 +254,7 @@ function bindAccount() {
 
     $$('#courseGrid .course-card').forEach((el) => {
       el.addEventListener('click', () => {
-        goto('workspace');
-        snack('已切换到「' + COURSES.find((c) => c.id === el.dataset.course).name + '」');
+        selectCourse(el.dataset.course);
       });
     });
   }
@@ -266,7 +269,7 @@ function bindAccount() {
     box.innerHTML = list.map((c) =>
       '<button class="chapter" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + '>' +
         '<span class="ch-dot"></span>' +
-        '<span class="ch-name">' + c.name + '</span>' +
+        '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
         (c.pending ? '<span class="ch-count">' + c.pending + ' 待完成</span>' : '<span class="ch-count">已完成</span>') +
       '</button>'
     ).join('');
@@ -377,6 +380,13 @@ function bindAccount() {
 
   async function loadCourses() {
     if (!App || typeof App.courseOverview !== 'function') return;
+    if (App.coursesList) {
+      const catalog = await App.coursesList();
+      if (catalog && catalog.ok) {
+        COURSES = catalog.courses.map(c => ({...c,total:null,done:0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
+        const counter = $('#courseCount'); if (counter) counter.textContent = String(COURSES.length);
+      }
+    }
     try {
       const r = await App.courseOverview();
       const d = r && r.ok ? r.data : null;
@@ -394,7 +404,7 @@ function bindAccount() {
         current: cursor.jobTitle ? it.title.indexOf(String(cursor.jobTitle).slice(0, 12)) >= 0 : false,
       }));
 
-      COURSES = [
+      if (!App.coursesList) COURSES = [
         {
           id: 'current',
           name: cursor.courseName || (CHAPTERS[0] ? '当前课程' : '尚未进入课程'),
@@ -685,6 +695,31 @@ function bindAccount() {
     if (dt) dt.checked = window.CxTheme.get().dark;
   }
 
+  async function selectCourse(id) {
+    if (!App?.courseOpen) return;
+    selectedCourse = id;CHAPTERS=[];RUNNER={mounted:false,snap:{}};renderChapters();
+    const selected=COURSES.find(c=>c.id===id);if($('#ctxCourse'))$('#ctxCourse').textContent=selected?.name || '课程';
+    goto('workspace'); snack('后台正在打开课程…');
+    try {
+      const r=await App.courseOpen(id);
+      if (!r?.ok) { snack(r?.error || '课程打开失败'); return; }
+      await loadRunnerState(); await loadCourses(); renderChapters(); await pollCourseStatus();
+    } catch(e) {snack('课程打开失败：'+e.message);}
+  }
+  async function pollCourseStatus() {
+    if (!App?.courseStatus) return;
+    const state=await App.courseStatus();
+    const panel=$('#verificationPanel'), image=$('#verificationImage'), message=$('#verificationText');
+    if (!panel) return;
+    const verify=state.verification;
+    panel.hidden=!verify;
+    if (verify) {
+      message.textContent=verify.expired ? '平台二维码已过期，等待自动更新；也可显示原网页刷新。' : verify.kind==='face' ? '使用手机 App 扫码并完成人脸验证。验证结果由平台确认。' : '使用手机 App 扫码登录。';
+      if (verify.image) { image.src=verify.image;image.hidden=false; } else {image.removeAttribute('src');image.hidden=true;message.textContent+=' 暂未能读取二维码，可显示原网页处理。';}
+    } else {image.removeAttribute('src');image.hidden=true;}
+    const status=$('#backgroundStatus');
+    if (status) status.textContent=state.error || ({loading:'后台正在读取课程…',catalog:'从下方选择课程，无需打开网页。',opening:'后台正在加载课程及章节…',ready:'课程学习页已就绪，可以开始。',running:'任务正在后台执行。',verification:'等待手机完成人脸验证。',login:'等待登录，可扫码或显示原网页登录。'}[state.phase] || '');
+  }
   async function windowAction(action) {
     if (!App || !App.windowControl) { snack('仅桌面客户端支持此操作'); return; }
     try { const r = await App.windowControl(action); if (!r || !r.ok) snack('窗口操作失败'); }
@@ -693,6 +728,10 @@ function bindAccount() {
   async function runnerAction(method) {
     if (!App || !App.evalMain) { snack('预览模式不执行课程任务'); return; }
     try {
+      if ((method==='pause'||method==='stop') && App.courseCancelStart) await App.courseCancelStart();
+      if (method==='start' && !RUNNER.mounted && App.courseStart) {
+        const r=await App.courseStart();snack(r.ok ? (r.pending ? '已等待后台进入学习页，完成验证后自动开始' : '已启动') : r.error);await pollCourseStatus();return;
+      }
       const code = '(async()=>{const a=window.__cxNaturalWatchApp;if(!a||!a.runner)return {ok:false,error:"请先显示网页并进入课程学习页"};await a.runner[' + JSON.stringify(method) + ']();return {ok:true}})()';
       const r = await App.evalMain(code);
       if (!r || !r.ok || !r.result || !r.result.ok) { snack((r && r.result && r.result.error) || '任务操作失败'); return; }
@@ -700,6 +739,7 @@ function bindAccount() {
     } catch (e) { snack('任务操作失败：' + e.message); }
   }
   async function refreshCourses() {
+    if (App?.coursesRefresh) {const result=await App.coursesRefresh();if(!result.ok){snack(result.error || '读取失败');return;}}
     await loadCourses(); renderCourses(); renderSideCourses(); renderChapters();
     snack(COURSES.length ? '课程数据已更新' : '请先显示网页并进入课程学习页');
   }
@@ -769,7 +809,7 @@ function bindAccount() {
           tbApp.setAttribute('aria-expanded', 'false');
           if (mi === 'settings') goto('model');
           else if (mi === 'tray') windowAction('hide');
-          else if (mi === 'check') snack('当前版本 0.2.0-beta.6；更新下载见 GitHub Releases');
+          else if (mi === 'check') App?.appInfo ? App.appInfo().then(info=>snack('当前版本 '+info.version+'；更新下载见 GitHub Releases')).catch(()=>snack('读取版本失败')) : snack('预览模式');
           else if (mi === 'about') snack('课程伴学工具 v0.2.0 · 非官方兼容工具');
           else if (mi === 'quit') openDialog('退出程序', '退出后自动化会停止。确定退出？', () => windowAction('quit'));
         });
@@ -939,6 +979,8 @@ function bindAccount() {
     bind();
     bindTheme();
     bindAccount();
+    $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
+    $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
     updateFab();
 
     // 再把真实数据补上（带超时，失败也不影响交互）
@@ -967,6 +1009,8 @@ function bindAccount() {
       goto(hash);
     }
     updateFab();
+
+    if(App?.courseStatus){pollCourseStatus().catch(()=>{});setInterval(()=>pollCourseStatus().catch(()=>{}),1500);setInterval(()=>loadCourses().then(()=>{renderCourses();renderSideCourses();}).catch(()=>{}),5000);}
 
     // 定时刷新真实状态
     if (!IS_PREVIEW) {
