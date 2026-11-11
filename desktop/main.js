@@ -142,6 +142,8 @@ function buildInjectCode(userscript) {
 (function(){
   if (window.__cxUserscriptLoaded) return;
   window.__cxUserscriptLoaded = true;
+  // 告诉用户脚本：这次是 App 内注入，网页里不要再挂自己的面板
+  window.__CX_IN_APP__ = true;
   try {
 ${GM_SHIM}
   } catch (e) { console.error('[cx] gm shim failed', e); }

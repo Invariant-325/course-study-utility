@@ -5,6 +5,17 @@
 // ---------------------------------------------------------------------------
 const APP_KEY = '__cxNaturalWatchApp';
 
+// App（Electron 桌面版）内部注入时，宿主会先把 __CX_IN_APP__ 置为 true。
+// App 自己有侧栏界面，网页里再挂一套面板既重复又挡内容，所以这时不挂 UI，
+// 但仍保留 Runner / Config / ChapterQuiz 等全部逻辑供宿主调用。
+const IN_APP = (function () {
+  try {
+    return window.__CX_IN_APP__ === true;
+  } catch (e) {
+    return false;
+  }
+})();
+
 function destroyPrevious() {
   const previous = window[APP_KEY];
   if (previous && typeof previous.destroy === 'function') {
@@ -22,7 +33,8 @@ function boot() {
 
   Config.load();
   Runner.setHooks({ onUpdate: UI.update });
-  UI.mount();
+  // App 内不挂网页面板，避免和宿主的侧栏重复
+  if (!IN_APP) UI.mount();
 
   window[APP_KEY] = {
     destroy: function () {
@@ -153,7 +165,8 @@ function isQuizPageHere() {
 
 function bootQuizPage() {
   Config.load();
-  QuizPanel.mount();
+  // 同上：App 内由宿主侧栏负责答题交互，网页里不再挂测验面板
+  if (!IN_APP) QuizPanel.mount();
   window[APP_KEY] = {
     destroy: function () {
       try {
@@ -169,7 +182,7 @@ function bootQuizPage() {
     config: Config,
     log: Log,
   };
-  Log.info('章节测验面板已就绪：' + location.pathname);
+  Log.info(IN_APP ? '章节测验逻辑已就绪（App 模式，不挂网页面板）' : '章节测验面板已就绪：' + location.pathname);
 }
 
 if (IS_TOP_FRAME && CourseUrl.isStudyPage(location.href)) {
