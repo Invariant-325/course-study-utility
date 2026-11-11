@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 try {
   if (-not (Test-Path -LiteralPath 'node_modules/electron-builder/cli.js')) {
@@ -38,6 +38,8 @@ try {
   # 构建后校验 EXE 产品资源与 package.json 一致
   # PowerShell 5.1 的 ConvertFrom-Json 对深层 package.json 会抛 ArgumentException，改用 node 读版本
   $pkgVersion = (& node -p "require('./package.json').version").Trim()
+  # EXE 资源是纯数字版本，0.2.0-beta.2 比对 0.2.0
+  $pkgNumeric = ($pkgVersion -split '-')[0]
   $exe = Join-Path (Split-Path $PSScriptRoot -Parent) 'dist/win-unpacked/CourseStudyUtility.exe'
   if (-not (Test-Path -LiteralPath $exe)) { throw "Built executable not found: $exe" }
   $vi = (Get-Item -LiteralPath $exe).VersionInfo
@@ -45,7 +47,7 @@ try {
   if ($rcedit) {
     $expectedName = [string](Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build/product-name.txt') -Raw -ErrorAction SilentlyContinue)
     if (-not $expectedName) { $expectedName = [char]0x8BFE + [char]0x7A0B + [char]0x4F34 + [char]0x5B66 + [char]0x5DE5 + [char]0x5177 }
-    if ($vi.ProductVersion -ne $pkgVersion) { throw "ProductVersion mismatch: '$($vi.ProductVersion)' vs '$pkgVersion'" }
+    if ($vi.ProductVersion -ne $pkgNumeric) { throw "ProductVersion mismatch: '$($vi.ProductVersion)' vs '$pkgVersion'" }
     if (-not $vi.ProductName) { throw 'ProductName empty' }
     Write-Host 'EXE resource check: PASS'
   } else {

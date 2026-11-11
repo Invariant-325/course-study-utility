@@ -1,0 +1,707 @@
+/* ===========================================================================
+   components.css —— M3 组件 + 克制的 Liquid Glass
+   ---------------------------------------------------------------------------
+   Liquid Glass 的使用边界（重要）：
+   只在"浮在内容之上、且需要透出下方内容"的三类元素上用：
+     1. FAB（主操作）
+     2. .glass-bar（悬浮工具条）
+     3. Dialog 表面
+   绝不用在：卡片、列表、导航栏、标题栏、任何静态布局块。
+   —— 全局毛玻璃会让界面失去层次，也会让文字对比度不可控。
+
+   Liquid Glass 的构成（不是单纯 blur）：
+     a) 高折射感底色（半透明 + 饱和度提升）
+     b) 顶部内高光（模拟玻璃厚度）
+     c) 底部内阴影（模拟折射暗边）
+     d) 外投影（明确浮起层级）
+     e) 极细的外描边（勾出玻璃边缘）
+   =========================================================================== */
+
+/* ---------------------------------------------------------------- 按钮 */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--md-sys-shape-full);
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* state layer：M3 用叠加层表达 hover/press，而不是直接改背景色 */
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+  pointer-events: none;
+}
+
+.btn:hover::after {
+  opacity: var(--md-sys-state-hover-opacity);
+}
+.btn:focus-visible::after {
+  opacity: var(--md-sys-state-focus-opacity);
+}
+.btn:active::after {
+  opacity: var(--md-sys-state-pressed-opacity);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn:disabled::after {
+  opacity: 0;
+}
+
+/* Filled */
+.btn.filled {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-onPrimary);
+}
+.btn.filled:hover {
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+/* Tonal */
+.btn.tonal {
+  background: var(--md-sys-color-secondaryContainer);
+  color: var(--md-sys-color-onSecondaryContainer);
+}
+
+/* Outlined */
+.btn.outlined {
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-outline);
+}
+.btn.outlined:hover {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* Text */
+.btn.text {
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  padding: 0 12px;
+}
+
+/* 危险动作 */
+.btn.danger {
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-onError);
+}
+
+/* ---------------------------------------------------------------- 图标按钮 */
+.iconbtn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--md-sys-shape-full);
+  background: transparent;
+  color: var(--md-sys-color-onSurfaceVariant);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.iconbtn:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 8%, transparent);
+  color: var(--md-sys-color-onSurface);
+}
+
+.iconbtn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- 卡片 */
+.card {
+  position: relative;
+  border-radius: var(--md-sys-shape-large);
+  padding: 20px;
+  transition: background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+}
+
+/* filled：默认，靠 tonal 分层而不是描边 */
+.card.filled {
+  background: var(--md-sys-color-surfaceContainerLow);
+}
+
+.card.filled:hover {
+  background: var(--md-sys-color-surfaceContainer);
+}
+
+/* elevated：需要明确浮起的卡片 */
+.card.elevated {
+  background: var(--md-sys-color-surfaceContainerLow);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.card.elevated:hover {
+  box-shadow: var(--md-sys-elevation-level2);
+}
+
+/* outlined */
+.card.outlined {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-outlineVariant);
+}
+
+.card .cardtitle {
+  color: var(--md-sys-color-onSurface);
+  margin: 0 0 2px;
+}
+
+.card .cardsub {
+  color: var(--md-sys-color-onSurfaceVariant);
+  margin: 0;
+}
+
+/* 可点击卡片 */
+.card.clickable {
+  cursor: pointer;
+  text-align: left;
+  border: 0;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  display: block;
+}
+
+.card.clickable:active {
+  transform: scale(0.995);
+}
+
+/* ---------------------------------------------------------------- Chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--md-sys-shape-small);
+  border: 0;
+  background: var(--md-sys-color-surfaceContainerHigh);
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.chip:hover {
+  background: var(--md-sys-color-surfaceContainerHighest);
+}
+
+.chip[aria-selected='true'] {
+  background: var(--md-sys-color-secondaryContainer);
+  color: var(--md-sys-color-onSecondaryContainer);
+}
+
+.chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--md-sys-shape-full);
+  background: currentColor;
+  opacity: 0.75;
+}
+
+/* 静态状态 chip */
+.chip.tone-primary {
+  background: var(--md-sys-color-primaryContainer);
+  color: var(--md-sys-color-onPrimaryContainer);
+}
+.chip.tone-ok {
+  background: color-mix(in oklab, #16a34a 22%, var(--md-sys-color-surfaceContainerHigh));
+  color: color-mix(in oklab, #16a34a 70%, var(--md-sys-color-onSurface));
+}
+.chip.tone-warn {
+  background: color-mix(in oklab, #d97706 24%, var(--md-sys-color-surfaceContainerHigh));
+  color: color-mix(in oklab, #b45309 78%, var(--md-sys-color-onSurface));
+}
+.chip.tone-error {
+  background: var(--md-sys-color-errorContainer);
+  color: var(--md-sys-color-onErrorContainer);
+}
+
+/* ---------------------------------------------------------------- 进度 */
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: var(--md-sys-shape-full);
+  background: color-mix(in oklab, var(--md-sys-color-primary) 16%, transparent);
+  overflow: hidden;
+}
+
+.progress > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--md-sys-color-primary);
+  transition: width var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized);
+}
+
+/* 不确定进度：M3 的滑动条 */
+.progress.indeterminate > i {
+  width: 40%;
+  animation: indet 1.6s var(--md-sys-motion-easing-emphasized) infinite;
+}
+
+@keyframes indet {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* 环形进度 */
+.ring {
+  --p: 0;
+  --size: 44px;
+  --thick: 4px;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--md-sys-color-primary) calc(var(--p) * 1%),
+    color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent) 0
+  );
+  display: grid;
+  place-items: center;
+  transition: background var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-emphasized);
+}
+
+.ring::before {
+  content: '';
+  width: calc(var(--size) - var(--thick) * 2);
+  height: calc(var(--size) - var(--thick) * 2);
+  border-radius: 50%;
+  background: var(--md-sys-color-surfaceContainerLow);
+}
+
+/* ---------------------------------------------------------------- 开关 */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .track {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-surfaceContainerHighest);
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-outline);
+  transition: background var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized),
+    box-shadow var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+  flex: 0 0 auto;
+}
+
+.switch .knob {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-outline);
+  transform: translateY(-50%);
+  transition: left var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
+    width var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
+    height var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
+    background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.switch input:checked + .track {
+  background: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
+}
+
+.switch input:checked + .track .knob {
+  left: 30px;
+  width: 24px;
+  height: 24px;
+  background: var(--md-sys-color-onPrimary);
+}
+
+.switch input:focus-visible + .track {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.switch .slabel {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- 文本域 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: 500;
+  padding-left: 2px;
+}
+
+.field input[type='text'],
+.field input[type='password'],
+.field input[type='number'],
+.field textarea {
+  height: 48px;
+  padding: 0 16px;
+  border-radius: var(--md-sys-shape-small);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font: inherit;
+  font-size: var(--md-sys-typescale-body-large-size);
+  transition: border-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+  user-select: text;
+}
+
+.field textarea {
+  height: auto;
+  min-height: 96px;
+  padding: 12px 16px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.field input:hover,
+.field textarea:hover {
+  border-color: var(--md-sys-color-onSurface);
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+  background: color-mix(in oklab, var(--md-sys-color-primary) 4%, transparent);
+}
+
+.field .hint {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  padding-left: 2px;
+}
+
+/* ---------------------------------------------------------------- 列表项 */
+.listitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-radius: var(--md-sys-shape-small);
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.listitem:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 5%, transparent);
+}
+
+.listitem .li-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.listitem .li-title {
+  color: var(--md-sys-color-onSurface);
+  font-size: var(--md-sys-typescale-body-large-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listitem .li-sub {
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: var(--md-sys-typescale-body-small-size);
+  margin-top: 2px;
+}
+
+.listitem .li-trail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------- FAB（Liquid Glass） */
+.fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 60;
+  height: 56px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--md-sys-shape-large-increased);
+  cursor: pointer;
+  color: var(--md-sys-color-onPrimaryContainer);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+
+  /* Liquid Glass 构成 */
+  background: color-mix(in oklab, var(--md-sys-color-primaryContainer) 68%, transparent);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  box-shadow:
+    0 10px 28px -6px color-mix(in oklab, var(--md-sys-color-primary) 45%, transparent),
+    0 2px 6px color-mix(in oklab, #000 14%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fff 55%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 10%, transparent);
+  outline: 1px solid color-mix(in oklab, #fff 30%, transparent);
+  outline-offset: -1px;
+  transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
+    box-shadow var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized),
+    background-color var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+}
+
+[data-mica='dark'] .fab {
+  background: color-mix(in oklab, var(--md-sys-color-primaryContainer) 46%, transparent);
+  box-shadow:
+    0 10px 28px -6px color-mix(in oklab, var(--md-sys-color-primary) 40%, transparent),
+    0 2px 6px color-mix(in oklab, #000 40%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fff 22%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 26%, transparent);
+  outline-color: color-mix(in oklab, #fff 14%, transparent);
+}
+
+.fab:hover {
+  transform: translateY(-2px) scale(1.015);
+}
+
+.fab:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.fab svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 播放中：FAB 变成暂停态 */
+.fab.is-playing {
+  background: color-mix(in oklab, var(--md-sys-color-tertiaryContainer) 68%, transparent);
+  color: var(--md-sys-color-onTertiaryContainer);
+}
+
+/* ---------------------------------------------------------------- 悬浮工具条（Liquid Glass） */
+.glass-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--md-sys-shape-full);
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerHigh) 62%, transparent);
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  box-shadow:
+    0 8px 24px -8px color-mix(in oklab, #000 28%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fff 40%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 8%, transparent);
+  outline: 1px solid color-mix(in oklab, #fff 22%, transparent);
+  outline-offset: -1px;
+}
+
+[data-mica='dark'] .glass-bar {
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerHigh) 54%, transparent);
+  outline-color: color-mix(in oklab, #fff 10%, transparent);
+  box-shadow:
+    0 8px 24px -8px color-mix(in oklab, #000 55%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fff 16%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 22%, transparent);
+}
+
+/* ---------------------------------------------------------------- Dialog */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklab, var(--md-sys-color-scrim, #000) 32%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.scrim[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dialog {
+  width: min(520px, calc(100vw - 64px));
+  max-height: min(640px, calc(100vh - 96px));
+  overflow-y: auto;
+  border-radius: var(--md-sys-shape-extra-large);
+  padding: 24px;
+
+  /* Dialog 也走 Liquid Glass，因为它是浮在内容上的 */
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerHigh) 78%, transparent);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 24px 56px -12px color-mix(in oklab, #000 45%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fff 44%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 10%, transparent);
+  outline: 1px solid color-mix(in oklab, #fff 26%, transparent);
+  outline-offset: -1px;
+
+  transform: translateY(12px) scale(0.97);
+  opacity: 0;
+  transition: transform var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-spring),
+    opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized);
+}
+
+[data-mica='dark'] .dialog {
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerHigh) 62%, transparent);
+  outline-color: color-mix(in oklab, #fff 12%, transparent);
+}
+
+.scrim[data-open='true'] .dialog {
+  transform: none;
+  opacity: 1;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  color: var(--md-sys-color-onSurface);
+}
+
+.dialog p {
+  margin: 0 0 20px;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* ---------------------------------------------------------------- Snackbar */
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 20px);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: var(--md-sys-shape-small);
+  background: var(--md-sys-color-inverseSurface);
+  color: var(--md-sys-color-inverseOnSurface);
+  box-shadow: var(--md-sys-elevation-level3);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized),
+    transform var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-spring);
+  max-width: min(560px, calc(100vw - 64px));
+}
+
+.snackbar[data-open='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.snackbar button {
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-inversePrimary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--md-sys-shape-extra-small);
+}
+
+/* ---------------------------------------------------------------- 分隔线 */
+.divider {
+  height: 1px;
+  background: var(--md-sys-color-outlineVariant);
+  border: 0;
+  margin: 16px 0;
+  opacity: 0.6;
+}

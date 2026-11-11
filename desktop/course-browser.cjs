@@ -1,14 +1,34 @@
 const { PORTAL_URL, isPlatformUrl, isLandingUrl, clickCourseMenu } = require('./browser-policy.cjs');
 
-function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }) {
+function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, defaultMuted = false }) {
   const pages = [];
   let active, closing = false;
   const states = new WeakMap();
+  // 默认不展示网页内容：全程在后台运行，需要登录/扫码时才临时显示
+  let viewVisible = false;
+  const SIDEBAR_W = 280;
   function layout() {
     if (!active || win.isDestroyed()) return;
     const b = win.getContentBounds();
-    active.setBounds({ x: 0, y: 56, width: Math.max(200, b.width - 340), height: Math.max(200, b.height - 56) });
-    active.setVisible(true);
+    // 显示时占右侧内容区，不盖住自绘侧栏
+    active.setBounds({
+      x: SIDEBAR_W,
+      y: 48,
+      width: Math.max(200, b.width - SIDEBAR_W),
+      height: Math.max(200, b.height - 48),
+    });
+    active.setVisible(viewVisible);
+  }
+  function setViewVisible(v) {
+    viewVisible = !!v;
+    if (active) {
+      active.setVisible(viewVisible);
+      if (viewVisible) layout();
+    }
+    return viewVisible;
+  }
+  function isViewVisible() {
+    return viewVisible;
   }
   function activate(page) {
     if (active) { active.setVisible(false); win.contentView.removeChildView(active); }
@@ -69,6 +89,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
     const page = new WebContentsView({ ...(options.webContents ? {webContents: options.webContents} : {}), webPreferences: { ...options.webPreferences,
       session: ses, preload, contextIsolation: true, nodeIntegration: false,
       nodeIntegrationInSubFrames: false, sandbox: true, backgroundThrottling: false } });
+    page.webContents.setAudioMuted(defaultMuted);
     page.setBackgroundColor('#ffffff');
     const wc = page.webContents;
     const state = { error: '', lastGood: PORTAL_URL, routing: false, recovered: false,
@@ -119,6 +140,9 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log }
   win.on('restore', () => { layout(); if (active) active.webContents.invalidate(); });
   return {
     get view() { return active; },
+    setMuted(value) {defaultMuted=!!value;for(const p of pages)if(!p.webContents.isDestroyed())p.webContents.setAudioMuted(defaultMuted);},
+    setVisible: setViewVisible,
+    isVisible: isViewVisible,
     goto(url) { return load(active, url); },
     async home() {
       const state = states.get(active);

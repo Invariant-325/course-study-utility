@@ -18,8 +18,21 @@ const isAppUi = (() => {
 
 if (isAppUi) {
   contextBridge.exposeInMainWorld('__cxApp', {
+    windowControl: (action) => ipcRenderer.invoke('window:control', action),
+    coursesList: () => ipcRenderer.invoke('courses:list'),
+    coursesRefresh: () => ipcRenderer.invoke('courses:refresh'),
+    courseOpen: id => ipcRenderer.invoke('courses:open', id),
+    courseStatus: () => ipcRenderer.invoke('courses:status'),
+    courseStart: () => ipcRenderer.invoke('courses:start'),
+    courseCancelStart: () => ipcRenderer.invoke('courses:cancel'),
+    preferences: patch => ipcRenderer.invoke('app:preferences',patch),
+    checkUpdates: () => ipcRenderer.invoke('app:updates'),
+    openExternal: url => ipcRenderer.invoke('app:external',url),
     // 网页控制
     goto: (url) => ipcRenderer.invoke('web:goto', url),
+    toggleWeb: (force) => ipcRenderer.invoke('web:toggle', force),
+    webVisible: () => ipcRenderer.invoke('web:visible'),
+
     home: () => ipcRenderer.invoke('web:home'),
     reload: () => ipcRenderer.invoke('web:reload'),
     back: () => ipcRenderer.invoke('web:back'),
@@ -29,6 +42,24 @@ if (isAppUi) {
     // 视觉
     askVision: (payload) => ipcRenderer.invoke('vision:ask', payload),
     visionStatus: () => ipcRenderer.invoke('vision:status'),
+
+    // 模型设置（普通用户只需填 API Key）
+    setModelKey: (key) => ipcRenderer.invoke('model:setKey', key),
+    clearModelKey: () => ipcRenderer.invoke('model:clearKey'),
+    testModel: () => ipcRenderer.invoke('model:test'),
+
+    // 课程总览与待办队列
+    courseOverview: () => ipcRenderer.invoke('course:overview'),
+    tasksList: () => ipcRenderer.invoke('tasks:list'),
+    tasksAdd: (task) => ipcRenderer.invoke('tasks:add', task),
+    tasksUpdate: (id, patch) => ipcRenderer.invoke('tasks:update', id, patch),
+    tasksRemove: (id) => ipcRenderer.invoke('tasks:remove', id),
+    tasksSave: (list) => ipcRenderer.invoke('tasks:save', list),
+
+    // 统计与通知
+    statsGet: () => ipcRenderer.invoke('stats:get'),
+    statsRecord: (delta) => ipcRenderer.invoke('stats:record', delta),
+    notify: (payload) => ipcRenderer.invoke('app:notify', payload),
 
     // 运行状态（页面/标题）
     pageInfo: () => ipcRenderer.invoke('web:info'),

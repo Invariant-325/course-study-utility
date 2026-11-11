@@ -1,61 +1,45 @@
 # 课程伴学工具
 
-一个兼容学习通（超星平台）的 Windows 课程辅助工具。把课程页面、播放控制和 AI 题目识别放在同一个窗口里，也保留了可单独使用的 Tampermonkey 脚本。
+Windows 桌面课程辅助工具，兼容学习通（超星平台）。支持课程管理、章节任务跟踪、视频学习辅助，以及由用户配置模型的 AI 视觉识题与作答。
 
-[下载最新版本](https://github.com/Invariant-325/course-study-utility/releases/latest) · [更新日志](CHANGELOG.md) · [安装与更新](docs/installation-and-updates.md)
+**[下载 0.2.1](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.1)** · [历史版本](https://github.com/Invariant-325/course-study-utility/releases) · [更新记录](CHANGELOG.md)
 
-**开发预览：[0.2.0 Beta 4](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.4)**。0.2.0 系列按 Beta 版本迭代，正式版本仍为 **0.1.9**。
-
-本项目由个人独立维护，**不是学习通或超星官方产品**，与超星平台没有隶属、授权、合作或背书关系。相关名称仅用于说明兼容性，商标及其他权利归各自权利人所有。
+0.2.0 系列完成了主要界面重构：从网页控制面板调整为侧栏与独立工作区，加入主题配色、课程列表、任务状态、统计与托盘操作；随后接入后台选课和扫码验证。各阶段 Beta 保留在历史版本中。0.2.1 继续完善课程展示、设置、进度和交互。
 
 ## 功能
 
-- 课程列表导航、登录状态保存、网页后退与刷新。
-- 视频自然播放、任务状态跟踪和章节切换。
-- 通过 AI 视觉识别章节测验题目，显示并填写答案。
-- 分别控制章节测验的自动做题和自动提交。
-- 夜间模式：网页静音，倒计时 30 秒后关闭显示器。
+- 后台读取课程，在主页选课；显示平台二维码，由本人在手机完成验证后继续。
+- 显示课程封面、账号昵称与头像。已读取的课程缓存实际进度，未读取时保留待确认状态。
+- 章节区分已完成、仅视频完成、仅测验完成、均未完成和待确认；清理标题中附带的任务状态文字。
+- 模型配置、网页默认静音、日志和启动时检查更新集中到设置。静音仅作用于应用内网页。
+- 支持明暗主题与配色、当前课程强调、可拖动侧栏宽度，并保存布局。
+- 保留“网页”按钮处理登录及暂未适配的页面；关于页面提供项目链接与基本声明。
 
-**夜间模式会同时开启自动做题和自动提交。** 新配置下这两个开关默认关闭；已有配置会保留。它们针对章节测验，视频内弹题仍沿用原来的处理逻辑。
+## 使用
 
-## 安装与使用
+1. 下载 `CourseStudyUtility-0.2.1-Setup-x64.exe`。升级前从托盘退出旧程序，再运行安装包。
+2. 首次登录使用顶部“网页”入口，按平台要求登录。课程验证二维码可在主界面查看。
+3. 在主页选择课程。需要 AI 功能时，在设置中配置支持视觉输入的模型和 API Key，模型费用由对应服务商收取。
+4. 拖动侧栏右侧分隔线调整宽度，双击恢复默认。检查更新会打开 GitHub 下载页，不自动安装。
 
-1. 在 [Releases](https://github.com/Invariant-325/course-study-utility/releases) 下载 Windows x64 的 `Setup-x64.exe`。
-2. 正常退出旧版，再运行安装包。**0.1.9 改为机器级安装，需要管理员权限**；从 0.1.8 及更早的用户级安装升级，安装位置会改变，升级后请核对版本号。
-3. 在 App 中自行登录，打开课程并进入章节学习页，再使用右侧控制面板。
-4. 使用 AI 前，安装并配置自己的 DeepSeek Harness 和模型凭据。程序不附带 API Key，也不提供内置题库。
+平台页面变化可能影响课程读取，无法识别的页面可使用“网页”入口处理。AI 结果需自行核对。
 
-AI 会读取程序生成的题目图片并给出答案，再由程序校验选项。图片、公式、题型和页面结构都可能影响结果，请先核对答案，再决定是否启用自动提交。识别会使用你配置的模型服务，并可能产生调用费用。
+## 开发
 
-## 使用前请了解
-
-平台页面改版可能影响功能，遇到问题可在 Issues 中反馈。0.1.9 的功能和操作方式见 [更新说明](docs/releases/0.1.9.md)。
-
-安装包暂未数字签名，下载运行时可能出现 SmartScreen 提示。验证码、人脸验证等身份校验需要本人完成。请遵守所在学校和平台的使用规定，不要把工具用于冒用身份、伪造学习记录或其他违规用途。
-
-## 从源码构建
-
-需要 Windows x64、Node.js 和 npm。
+源码入口为 `desktop/main.js`，界面位于 `desktop/ui`，课程脚本位于 `userscript`。需要 Node.js、npm 和 Windows 构建环境。
 
 ```powershell
 cd desktop
 npm ci
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1
+npm start
 ```
 
-构建说明见 [desktop/BUILD.md](desktop/BUILD.md)。修改用户脚本后，运行 `node userscript/build.mjs`，并将生成文件同步到 `desktop/userscript/` 后再打包。
-
-```text
-desktop/          桌面客户端、控制面板和打包脚本
-userscript/src/   用户脚本源码
-userscript/tests/ 离线测试
-docs/             使用说明、更新记录和历史核验记录
-```
-
-## 开发与许可
+构建使用 Electron 33.4.11、electron-builder 25.1.8 和 NSIS。`build.electronDist` 指向 `desktop/vendor/electron/dist`，离线构建前需将同版本 Electron 运行时放入该目录。设置 `CHAOXING_RCEDIT` 为 rcedit 可执行文件路径以写入 EXE 图标和版本资源，然后运行 `npm run dist`、`npm run verify:package`。
 
 项目由 Invariant-325 维护和发布，使用 DeepSeek 和 Codex 辅助编程、调试与打包。Issue 需包含应用版本、复现步骤、预期行为、实际结果和错误日志。密码、API Key、Cookie 及登录回调参数须脱敏。
 
-项目采用 [GPL-3.0-only](LICENSE)。修改后再分发须遵守 GPL 的源码提供与许可要求。另见 [开源声明](OPEN_SOURCE.md)、[第三方组件说明](NOTICE.md) 和 [免责声明](DISCLAIMER.md)。
+## 许可与兼容声明
 
-学习通、超星、chaoxing、xuexitong 为兼容性检索关键词，不是本工具的品牌名称。
+采用 [GPL-3.0-only](LICENSE)。分发修改版或衍生作品时，需按许可提供对应源码及许可文本。其他资源适用其各自许可。
+
+这是个人第三方兼容工具，并非学习通或超星开发的产品，与相关平台无隶属、授权、合作或背书关系。相关名称仅用于说明兼容性。使用者需遵守平台规则及所属机构要求，身份验证由本人完成。更多内容见 [开源声明](OPEN_SOURCE.md) 和 [免责声明](DISCLAIMER.md)。

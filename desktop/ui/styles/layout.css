@@ -1,0 +1,860 @@
+/* ===========================================================================
+   layout.css —— 应用骨架（侧栏 + 主区，参考 DSH Desktop 的信息架构）
+   ---------------------------------------------------------------------------
+   结构：
+     #app
+       #titlebar    48px，整条可拖拽，承载窗口控制
+       #sidebar     280px：品牌 / 主操作 / 导航 / 分组 / 列表 / 账户区
+       #main        内容区，独立滚动
+       #layers      浮层
+
+   为什么改成侧栏而不是导航栏：
+   DSH Desktop 那种信息架构能同时承载"导航 + 工作区列表 + 账户用量"，
+   导航栏放不下这些，而且账户区在底部需要固定位置。
+   =========================================================================== */
+
+#app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--app-sidebar-width) 1fr;
+  grid-template-rows: var(--app-titlebar-height) 1fr;
+  grid-template-areas:
+    'titlebar titlebar'
+    'sidebar  main';
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------------------------------------------------------------- 标题栏 */
+#titlebar {
+  grid-area: titlebar;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 0 14px;
+  position: relative;
+  z-index: 40;
+  background: transparent;
+}
+
+#titlebar .lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#titlebar .lead .brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--md-sys-color-onSurface);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+#titlebar .lead .brand .mk {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  background: linear-gradient(135deg,
+    var(--md-sys-color-primary),
+    color-mix(in oklab, var(--md-sys-color-tertiary) 72%, var(--md-sys-color-primary)));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, #fff 28%, transparent);
+}
+
+#titlebar .ctx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#titlebar .ctx .strong {
+  color: var(--md-sys-color-onSurface);
+  font-weight: 500;
+}
+
+#titlebar .ctx .sep {
+  opacity: 0.35;
+}
+
+#titlebar .tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+#titlebar .winctl {
+  display: flex;
+  align-items: stretch;
+  margin-left: 4px;
+  height: var(--app-titlebar-height);
+}
+
+#titlebar .winctl button {
+  width: 46px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-onSurfaceVariant);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+#titlebar .winctl button:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 10%, transparent);
+  color: var(--md-sys-color-onSurface);
+}
+
+#titlebar .winctl button.close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+#titlebar .winctl svg {
+  width: 10px;
+  height: 10px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.1;
+}
+
+/* ---------------------------------------------------------------- 侧栏 */
+#sidebar {
+  grid-area: sidebar;
+  position: relative;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 10px 8px;
+  /* 比主区略沉一层，形成"侧栏/内容"的层次而不靠描边 */
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerLow) 82%, transparent);
+  border-right: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 55%, transparent);
+}
+
+[data-mica='dark'] #sidebar {
+  background: color-mix(in oklab, var(--md-sys-color-surfaceContainerLow) 62%, transparent);
+}
+
+/* 品牌区 */
+.side-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 6px 12px;
+  flex: 0 0 auto;
+}
+
+.side-brand .lg {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  /* logo 自带渐变底与圆角，去掉原来的渐变和描边 */
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--md-sys-color-outlineVariant) 55%, transparent);
+}
+
+.side-brand .lg img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.side-brand .bn {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-brand .bn b {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--md-sys-color-onSurface);
+}
+
+.side-brand .bn span {
+  display: block;
+  font-size: 10px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  letter-spacing: 0.4px;
+}
+
+/* 主操作：白底描边大按钮（对应 DSH 的「新会话」） */
+.side-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  margin: 2px 0 12px;
+  border-radius: var(--md-sys-shape-full);
+  border: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 90%, transparent);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-onSurface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+
+.side-primary:hover {
+  background: var(--md-sys-color-surfaceContainer);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.side-primary svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 导航项 */
+.sidenav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+.sideitem {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.sideitem:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 6%, transparent);
+}
+
+.sideitem[aria-selected='true'] {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 9%, transparent);
+  font-weight: 550;
+}
+
+.sideitem svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.sideitem .sbadge {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 分组标题 */
+.sidegroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 4px;
+  flex: 0 0 auto;
+}
+
+.sidegroup .gt {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-sys-color-onSurfaceVariant);
+  letter-spacing: 0.3px;
+}
+
+.sidegroup .gact {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-easing-standard, var(--md-sys-motion-easing-standard));
+}
+
+#sidebar:hover .sidegroup .gact {
+  opacity: 1;
+}
+
+.sidegroup .gact button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--md-sys-shape-extra-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurfaceVariant);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.sidegroup .gact button:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 10%, transparent);
+  color: var(--md-sys-color-onSurface);
+}
+
+.sidegroup .gact svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 会话/课程列表（可滚动，占据剩余空间） */
+.sidelist {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: 2px;
+}
+
+.sidelist .lnk {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+.sidelist .lnk:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 6%, transparent);
+}
+
+.sidelist .lnk[data-on='true'] {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 9%, transparent);
+}
+
+.sidelist .lnk .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: 0 0 auto;
+  background: var(--md-sys-color-outlineVariant);
+}
+
+.sidelist .lnk[data-state='doing'] .dot {
+  background: var(--md-sys-color-primary);
+}
+.sidelist .lnk[data-state='done'] .dot {
+  background: #16a34a;
+}
+.sidelist .lnk[data-state='manual'] .dot {
+  background: #d97706;
+}
+
+.sidelist .lnk .lt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.sidelist .lnk .rt {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- 账户区 */
+#account {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 60%, transparent);
+}
+
+.acc-rows {
+  padding: 0 4px 8px;
+}
+
+.acc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  font-size: 11.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+.acc-row .k {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.acc-row .k svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  opacity: 0.7;
+}
+
+.acc-row .v {
+  color: var(--md-sys-color-onSurface);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* 用量条：分段（已用 / 剩余） */
+.acc-bar {
+  height: 5px;
+  margin: 6px 4px 4px;
+  border-radius: var(--md-sys-shape-full);
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 10%, transparent);
+  overflow: hidden;
+  display: flex;
+}
+
+.acc-bar i {
+  display: block;
+  height: 100%;
+}
+
+.acc-bar i.a {
+  background: var(--md-sys-color-primary);
+}
+.acc-bar i.b {
+  background: color-mix(in oklab, var(--md-sys-color-tertiary) 80%, var(--md-sys-color-primary));
+}
+
+.acc-note {
+  padding: 0 4px 8px;
+  font-size: 10.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+/* 头像行 */
+.acc-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 6px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  cursor: pointer;
+  color: var(--md-sys-color-onSurface);
+  transition: background-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+  text-align: left;
+}
+
+.acc-user:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 7%, transparent);
+}
+
+.acc-user .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--md-sys-color-primaryContainer);
+  color: var(--md-sys-color-onPrimaryContainer);
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+}
+
+.acc-user .avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.acc-user .un {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acc-user .caret {
+  flex: 0 0 auto;
+  opacity: 0.5;
+}
+
+.acc-user .caret svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+/* 头像弹出菜单 */
+#userMenu {
+  position: fixed;
+  z-index: 200;
+  min-width: 190px;
+  padding: 5px;
+  border-radius: var(--md-sys-shape-medium);
+  background: var(--md-sys-color-surfaceContainerHigh);
+  box-shadow: var(--md-sys-elevation-level3);
+  outline: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 70%, transparent);
+  transform-origin: bottom left;
+  opacity: 0;
+  transform: scale(0.96) translateY(6px);
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring);
+}
+
+#userMenu[data-open='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+#userMenu .mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+#userMenu .mi:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 8%, transparent);
+}
+
+#userMenu .mi svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+
+#userMenu .mi .kbd {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+  font-family: 'Segoe UI', sans-serif;
+}
+
+#userMenu .msep {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklab, var(--md-sys-color-outlineVariant) 80%, transparent);
+}
+
+#userMenu .mi.danger {
+  color: var(--md-sys-color-error);
+}
+
+/* ---------------------------------------------------------------- 主区 */
+#main {
+  grid-area: main;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px var(--app-gutter) 104px;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate),
+    transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+
+.page[data-active='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.page-inner {
+  max-width: var(--app-content-max);
+  margin: 0 auto;
+  padding-top: 10px;
+}
+
+#main::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  z-index: 10;
+  pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in oklab, var(--md-sys-color-surface) 92%, transparent), transparent);
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+#main[data-scrolled='true']::before {
+  opacity: 1;
+}
+
+.pagehead {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 6px 0 18px;
+}
+
+.pagehead .htext {
+  flex: 1;
+  min-width: 0;
+}
+
+.pagehead h1 {
+  margin: 0 0 4px;
+  color: var(--md-sys-color-onSurface);
+}
+
+.pagehead p {
+  margin: 0;
+  color: var(--md-sys-color-onSurfaceVariant);
+  max-width: 62ch;
+}
+
+.pagehead .hact {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#layers {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* Hidden overlays must not capture clicks through the full-window layer. */
+#layers > *[data-open='true'] {
+  pointer-events: auto;
+}
+
+@media (max-width: 1100px) {
+  :root {
+    --app-sidebar-width: 240px;
+    --app-gutter: 16px;
+  }
+}
+
+/* ---------------------------------------------------------------- 顶栏（借鉴 DSH 的菜单式顶栏） */
+#titlebar .tbtn {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurfaceVariant);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+#titlebar .tbtn:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 8%, transparent);
+  color: var(--md-sys-color-onSurface);
+}
+
+#titlebar .tbtn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#titlebar .tmenu {
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#titlebar .tmenu:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 8%, transparent);
+}
+
+#titlebar .tmenu[aria-expanded='true'] {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 11%, transparent);
+}
+
+/* 应用菜单（与头像菜单共用样式，位置由 JS 计算） */
+#appMenu {
+  position: fixed;
+  z-index: 200;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: var(--md-sys-shape-medium);
+  background: var(--md-sys-color-surfaceContainerHigh);
+  box-shadow: var(--md-sys-elevation-level3);
+  outline: 1px solid color-mix(in oklab, var(--md-sys-color-outlineVariant) 70%, transparent);
+  opacity: 0;
+  transform: scale(0.96) translateY(-6px);
+  transform-origin: top left;
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring);
+}
+
+#appMenu[data-open='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+#appMenu .mi,
+#userMenu .mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--md-sys-shape-small);
+  background: transparent;
+  color: var(--md-sys-color-onSurface);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+#appMenu .mi:hover,
+#userMenu .mi:hover {
+  background: color-mix(in oklab, var(--md-sys-color-onSurface) 8%, transparent);
+}
+
+#appMenu .mi svg,
+#userMenu .mi svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+
+#appMenu .mi .kbd,
+#userMenu .mi .kbd {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--md-sys-color-onSurfaceVariant);
+}
+
+#appMenu .msep,
+#userMenu .msep {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklab, var(--md-sys-color-outlineVariant) 80%, transparent);
+}
+
+#appMenu .mi.danger,
+#userMenu .mi.danger {
+  color: var(--md-sys-color-error);
+}
+
+/* 侧栏收起 */
+#app[data-collapsed='true'] {
+  grid-template-columns: 0 1fr;
+}
+
+#app[data-collapsed='true'] #sidebar {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#sidebar {
+  transition: transform var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-emphasized),
+    opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}

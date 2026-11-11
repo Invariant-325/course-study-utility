@@ -21,7 +21,7 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
   console.error('GUI startup requires Electron. Clear ELECTRON_RUN_AS_NODE and launch again.');
   process.exit(1);
 }
-const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, safeStorage } = electron;
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, safeStorage, Tray, Notification, nativeImage } = electron;
 const { createCourseBrowser } = require("./course-browser.cjs");
 const { retainLogin } = require("./login-session.cjs");
 const { isPlatformUrl } = require("./browser-policy.cjs");
@@ -63,8 +63,15 @@ process.on('unhandledRejection', (e) => {
 });
 bootLog('boot; version=' + app.getVersion() + '; electron=' + process.versions.electron);
 
+// 退出标志必须在任何 close 处理器之前声明：
+// 之前写在文件末尾，窗口关闭时命中 TDZ 直接抛 ReferenceError。
+let isQuitting = false;
+
 let win = null;
 let browser = null;
+let coursePortal = null;
+const { createCoursePortal } = require('./course-portal.cjs');
+const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
 let closingWindow = false;
 let store = {};
@@ -191,26 +198,40 @@ async function createWindow() {
   const persist = session.fromPartition('persist:chaoxing');
   loginSession = await retainLogin(persist, app.getPath('userData'), safeStorage, bootLog);
   win = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 960, minHeight: 640,
-    title: '课程伴学工具', backgroundColor: '#0f1218', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
+    width: 1440, height: 900, minWidth: 1080, minHeight: 680,
+    title: '课程伴学工具',
+    // 只隐藏标题栏，保留系统窗口边框：标题栏由页面自绘。
+    // 不用 frame:false —— 它和 backgroundMaterial:'mica' 同时出现会让窗口创建失败。
+    titleBarStyle: 'hidden',
+    backgroundMaterial: 'mica',
+    backgroundColor: '#00000000',
+    autoHideMenuBar: true,
+    webPreferences: { icon:path.join(__dirname,'build/icon.ico'),preload: path.join(__dirname, 'preload.js'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html')).catch(fatalStartup);
   win.webContents.on('did-finish-load', () => bootLog('control-panel-loaded'));
   win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
-    preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog });
+    preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog,defaultMuted:store.defaultWebMuted===true });
   // Use the portal's own course-menu handler after normal platform login.
-  browser.home();
+  coursePortal = createCoursePortal({ browser });
+  coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
   win.on('close', event => {
+    // 收起窗口 = 收进托盘（不退出），这样刷课能继续
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+      bootLog('window-hidden-to-tray');
+      return;
+    }
     if (closingWindow) return;
     event.preventDefault();
     closingWindow = true;
     (async () => {
       try { flushStore(); await loginSession.flush(); }
       catch { bootLog('close-save-failed'); }
-      browser.close();
+      try { coursePortal?.close(); browser.close(); } catch (e) {}
       win.destroy();
     })();
   });
@@ -249,7 +270,59 @@ function dshHomeDir() {
   return dir;
 }
 
+// ---------------- 模型凭据 ----------------
+// 优先级：用户在本 App 里填的（safeStorage 加密存盘）> 环境变量 > 本机 DSH 凭据（兼容老用户）
+// 目的：普通用户不需要装 DSH、不需要改配置文件。
+const MODEL_ENDPOINT = 'https://api.deepseek.com/chat/completions';
+const DEFAULT_MODEL = 'deepseek-chat';
+
+function credentialsFile() {
+  return path.join(app.getPath('userData'), 'credentials.bin');
+}
+
+function loadStoredKey() {
+  try {
+    const f = credentialsFile();
+    if (!fs.existsSync(f)) return '';
+    if (!safeStorage.isEncryptionAvailable()) return '';
+    return String(safeStorage.decryptString(fs.readFileSync(f)) || '');
+  } catch (e) {
+    return '';
+  }
+}
+
+function storeKey(key) {
+  const value = String(key || '').trim();
+  if (!value) return { ok: false, error: 'EMPTY_KEY' };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'ENCRYPTION_UNAVAILABLE' };
+  try {
+    fs.mkdirSync(path.dirname(credentialsFile()), { recursive: true });
+    fs.writeFileSync(credentialsFile(), safeStorage.encryptString(value));
+    bootLog('[credential] stored (' + value.length + ' chars)');
+    return { ok: true, masked: maskKey(value) };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+}
+
+function clearStoredKey() {
+  try {
+    fs.rmSync(credentialsFile(), { force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+}
+
+function maskKey(key) {
+  const k = String(key || '');
+  if (k.length <= 8) return k ? '****' : '';
+  return k.slice(0, 3) + '****' + k.slice(-4);
+}
+
 function resolveApiKey() {
+  const stored = loadStoredKey();
+  if (stored) return stored;
   if (process.env.VISION_API_KEY) return process.env.VISION_API_KEY;
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
   const candidates = [
@@ -267,6 +340,12 @@ function resolveApiKey() {
     }
   }
   return '';
+}
+
+function keySource() {
+  if (loadStoredKey()) return 'app';
+  if (process.env.VISION_API_KEY || process.env.DEEPSEEK_API_KEY) return 'env';
+  return resolveApiKey() ? 'dsh' : '';
 }
 
 const SYSTEM_TASK = [
@@ -391,25 +470,71 @@ async function askVision(payload) {
     if (w > 4096 || h > 4096) return { ok: false, status: 'unreadable', error: 'IMAGE_DIMENSION_EXCEEDED' };
   }
 
-  const tmp = path.join(app.getPath('temp'), 'cx-vision');
-  fs.mkdirSync(tmp, { recursive: true });
-  const imgPath = path.join(tmp, 'req-' + require('node:crypto').randomUUID() + '.png');
-  fs.writeFileSync(imgPath, buf);
-
-  const task = [SYSTEM_TASK, '', '题目 ID：' + questionId, '题目截图（绝对路径）：' + imgPath, '请读取该图片并作答。'].join('\n');
   const started = Date.now();
-  const result = await runHeadless(task, 120000);
-  const elapsedMs = Date.now() - started;
-  try { fs.rmSync(imgPath, { force: true }); } catch (e) {}
 
-  if (result.code !== 0) {
-    const tail = String(result.stderr || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(-300);
-    return { ok: false, status: 'unreadable', error: 'SESSION_EXIT_' + result.code, stderr: tail, elapsedMs };
+  // 直连 DeepSeek（OpenAI 兼容）——不需要用户安装 DSH。
+  // 提示词内置，图片以 data URL 内联，返回严格 JSON。
+  let modelText = '';
+  let usage = {};
+  try {
+    const res = await fetch(MODEL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + resolveApiKey(),
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_TASK },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '题目 ID：' + questionId + '。请阅读图片中的题目并作答。' },
+              { type: 'image_url', image_url: { url: 'data:image/png;base64,' + buf.toString('base64') } },
+            ],
+          },
+        ],
+        max_tokens: 400,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    const text = await res.text();
+    const elapsedMs = Date.now() - started;
+
+    if (!res.ok) {
+      const safe = String(text || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(0, 300);
+      return { ok: false, status: 'unreadable', error: 'HTTP_' + res.status, detail: safe, elapsedMs };
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      return { ok: false, status: 'unreadable', error: 'INVALID_RESPONSE', elapsedMs };
+    }
+
+    usage = (json && json.usage) || {};
+    const content =
+      json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+    modelText = content || '';
+    if (!modelText) return { ok: false, status: 'unreadable', error: 'EMPTY_CONTENT', elapsedMs };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 'unreadable',
+      error: 'NETWORK_ERROR',
+      detail: String((e && e.message) || e).slice(0, 200),
+      elapsedMs: Date.now() - started,
+    };
   }
+
+  const elapsedMs = Date.now() - started;
 
   let parsed;
   try {
-    parsed = extractJson(result.stdout);
+    parsed = extractJson(modelText);
   } catch (e) {
     return { ok: false, status: 'unreadable', error: 'PARSE_FAILED', elapsedMs };
   }
@@ -432,11 +557,35 @@ async function askVision(payload) {
   return {
     ok: errors.length === 0 && status === 'ok' && answers.length > 0,
     status, type, answers, errors, questionId, elapsedMs,
+    usage: {
+      promptTokens: Number(usage.prompt_tokens) || 0,
+      completionTokens: Number(usage.completion_tokens) || 0,
+    },
   };
 }
 
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
+  const externalBase='https://github.com/Invariant-325';
+  ipcMain.handle('app:external',async (_e,url)=>{let u;try{u=new URL(url)}catch{return{ok:false}}if(u.origin!=='https://github.com'||!(u.pathname==='/Invariant-325'||u.pathname.startsWith('/Invariant-325/course-study-utility')))return{ok:false};await electron.shell.openExternal(u.href);return{ok:true}});
+  ipcMain.handle('app:preferences',(_e,patch)=>{if(patch&&typeof patch.defaultWebMuted==='boolean'){store.defaultWebMuted=patch.defaultWebMuted;browser?.setMuted(patch.defaultWebMuted)}if(patch&&typeof patch.autoCheckUpdates==='boolean')store.autoCheckUpdates=patch.autoCheckUpdates;if(patch)saveStore();return{defaultWebMuted:store.defaultWebMuted===true,autoCheckUpdates:store.autoCheckUpdates!==false}});
+  ipcMain.handle('app:updates',async()=>{try{const res=await fetch('https://api.github.com/repos/Invariant-325/course-study-utility/releases/latest',{headers:{Accept:'application/vnd.github+json','User-Agent':'CourseStudyUtility'},signal:AbortSignal.timeout(12000)});if(!res.ok)return{ok:false,error:res.status===403?'请求受限，稍后重试':'更新服务返回 '+res.status};const d=await res.json();if(d.prerelease||d.draft)return{ok:false,error:'未找到正式版本'};const clean=v=>String(v).replace(/^v/,'').split('-')[0].split('.').map(Number);const a=clean(d.tag_name),b=clean(app.getVersion());let cmp=0;for(let i=0;i<3;i++){if(a[i]!==b[i]){cmp=a[i]>b[i]?1:-1;break}}if(!a.every(Number.isFinite))return{ok:false,error:'版本信息无效'};return{ok:true,current:app.getVersion(),latest:d.tag_name,available:cmp>0||(cmp===0&&app.getVersion().includes('-')),url:d.html_url}}catch{return{ok:false,error:'无法连接 GitHub，检查网络后重试'}}});
+  const progressNamespace=async()=>{const cookies=await browser?.view?.webContents.session.cookies.get({name:'_uid'});const id=cookies?.[0]?.value;return id?require('node:crypto').createHash('sha256').update(id).digest('hex'):null};
+  ipcMain.handle('courses:list', async () => {const result=coursePortal?await coursePortal.list():{ok:true,courses:[],state:{phase:'loading'}};const key=await progressNamespace();const cache=key?store.courseProgressByAccount?.[key]||{}:{};result.courses=result.courses.map(c=>({...c,progress:cache[c.id]||null}));return result;});
+  ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
+  ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
+  ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
+  ipcMain.handle('courses:start', () => coursePortal ? coursePortal.start() : {ok:false});
+  ipcMain.handle('courses:cancel', () => {coursePortal?.cancelStart();return {ok:true};});
+  ipcMain.handle('window:control', (_event, action) => {
+    if (!win || win.isDestroyed()) return { ok: false, error: 'NO_WINDOW' };
+    if (action === 'minimize') win.minimize();
+    else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
+    else if (action === 'hide') win.close();
+    else if (action === 'quit') { isQuitting = true; app.quit(); }
+    else return { ok: false, error: 'INVALID_ACTION' };
+    return { ok: true };
+  });
   ipcMain.on('kv:get', (event, key, fallback) => {
     event.returnValue =
       Object.prototype.hasOwnProperty.call(store, key) && store[key] !== null ? store[key] : fallback;
@@ -465,18 +614,163 @@ function registerIpc() {
     try {
       const r = await askVision(payload);
       bootLog('[vision] ' + (payload && payload.questionId) + ' ok=' + r.ok + ' ' + (r.elapsedMs || 0) + 'ms');
+      // 记录一次模型调用（无论成功失败，都算一次请求）
+      try {
+        bumpStats({
+          visionCalls: 1,
+          visionOk: r.ok ? 1 : 0,
+          visionFail: r.ok ? 0 : 1,
+          promptTokens: (r.usage && r.usage.promptTokens) || 0,
+          completionTokens: (r.usage && r.usage.completionTokens) || 0,
+        });
+      } catch (e) {
+        /* ignore */
+      }
       return r;
     } catch (e) {
+      try {
+        bumpStats({ visionCalls: 1, visionFail: 1 });
+      } catch (err) {
+        /* ignore */
+      }
       return { ok: false, status: 'unreadable', error: String(e && e.message) };
     }
   });
 
-  ipcMain.handle('vision:status', async () => ({
-    dshFound: !!findDshCli(),
-    dshPath: findDshCli(),
-    hasKey: !!resolveApiKey(),
-    home: dshHomeDir(),
-  }));
+  // ---------------- 统计（按日聚合，本地文件）----------------
+  // 只记录客户端观察到的事实：请求次数、token、播放秒数。
+  // 不推断成绩、不把"本地认为完成"写成"平台已确认"。
+  const STATS_FILE = () => path.join(app.getPath('userData'), 'stats.json');
+
+  function todayKey() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
+  function emptyDay() {
+    return {
+      visionCalls: 0,
+      visionOk: 0,
+      visionFail: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      playSeconds: 0,
+      tasksConfirmed: 0,
+    };
+  }
+
+  function readStats() {
+    try {
+      const f = STATS_FILE();
+      if (!fs.existsSync(f)) return { days: {} };
+      const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+      return s && typeof s === 'object' && s.days ? s : { days: {} };
+    } catch (e) {
+      return { days: {} };
+    }
+  }
+
+  function writeStats(s) {
+    try {
+      const f = STATS_FILE();
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify(s, null, 2), 'utf8');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  // delta: { visionCalls, visionOk, visionFail, promptTokens, completionTokens, playSeconds, tasksConfirmed }
+  function bumpStats(delta) {
+    const s = readStats();
+    const key = todayKey();
+    const day = Object.assign(emptyDay(), s.days[key] || {});
+    for (const k of Object.keys(delta || {})) {
+      if (typeof delta[k] === 'number' && k in day) day[k] += delta[k];
+    }
+    s.days[key] = day;
+    writeStats(s);
+    return day;
+  }
+
+  ipcMain.handle('stats:get', async () => {
+    const s = readStats();
+    const keys = Object.keys(s.days).sort().reverse().slice(0, 30);
+    const recent = {};
+    for (const k of keys) recent[k] = s.days[k];
+    return { ok: true, today: s.days[todayKey()] || emptyDay(), recent };
+  });
+
+  ipcMain.handle('stats:record', async (_e, delta) => ({ ok: true, day: bumpStats(delta || {}) }));
+
+  // 系统通知（异常需要人工时提醒）
+  ipcMain.handle('app:notify', async (_e, payload) => {
+    try {
+      if (!Notification.isSupported()) return { ok: false, error: 'NOT_SUPPORTED' };
+      const title = String((payload && payload.title) || '课程伴学工具');
+      const body = String((payload && payload.body) || '').slice(0, 200);
+      new Notification({ title, body }).show();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
+
+  ipcMain.handle('vision:status', async () => {
+    const key = resolveApiKey();
+    return {
+      hasKey: !!key,
+      keySource: keySource(),
+      keyMasked: maskKey(key),
+      endpoint: MODEL_ENDPOINT,
+      model: DEFAULT_MODEL,
+      // 兼容旧字段
+      dshFound: !!findDshCli(),
+      home: dshHomeDir(),
+    };
+  });
+
+  // ---- 模型设置（面向普通用户：填 Key 即用，不需要 DSH、不需要配置文件）----
+  ipcMain.handle('model:setKey', async (_e, key) => storeKey(key));
+  ipcMain.handle('model:clearKey', async () => clearStoredKey());
+
+  ipcMain.handle('model:test', async () => {
+    const key = resolveApiKey();
+    if (!key) return { ok: false, error: 'MISSING_CREDENTIAL' };
+    const started = Date.now();
+    try {
+      const res = await fetch(MODEL_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body: JSON.stringify({
+          model: DEFAULT_MODEL,
+          messages: [{ role: 'user', content: '只回复两个字：可用' }],
+          max_tokens: 16,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const text = await res.text();
+      const elapsedMs = Date.now() - started;
+      if (!res.ok) {
+        const safe = String(text || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(0, 200);
+        return { ok: false, error: 'HTTP_' + res.status, detail: safe, elapsedMs };
+      }
+      let content = '';
+      try {
+        const j = JSON.parse(text);
+        content = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '');
+      } catch (e) {
+        /* ignore */
+      }
+      return { ok: true, content: content.slice(0, 40), elapsedMs, model: DEFAULT_MODEL };
+    } catch (e) {
+      return { ok: false, error: 'NETWORK_ERROR', detail: String((e && e.message) || e).slice(0, 200), elapsedMs: Date.now() - started };
+    }
+  });
 
   // 版本与安装位置（用于 UI 显示与升级排查）
   ipcMain.handle('app:info', async () => ({
@@ -527,6 +821,134 @@ function registerIpc() {
   ipcMain.handle('web:info', () => browser ? browser.info() : { url: '', title: '' });
   ipcMain.handle('web:home', () => browser ? browser.home() : { ok: false });
 
+  // 网页视图显示/隐藏：默认隐藏，只在本机 UI 里按需切换
+  ipcMain.handle('web:toggle', async (_e, force) => {
+    if (!browser) return { ok: false, visible: false };
+    const next = typeof force === 'boolean' ? force : !browser.isVisible();
+    browser.setVisible(next);
+    return { ok: true, visible: next };
+  });
+
+  ipcMain.handle('web:visible', async () => ({ ok: true, visible: browser ? browser.isVisible() : false }));
+
+  // ---------------- 课程总览（仪表盘）----------------
+  // 只读：章节列表、待完成数、最近学习记录。不改页面，不推断完成。
+  ipcMain.handle('course:overview', async () => {
+    const view = browser && browser.view;
+    if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, reason: 'no-view' };
+    const code = `(function(){
+      var a = window.__cxNaturalWatchApp;
+      if (!a || !a.tree) return { ok: false, reason: 'not-mounted' };
+      try {
+        var cat = a.tree.catalogEntries();
+        var prog = null;
+        try { prog = a.tree.catalogProgress(); } catch (e) { prog = null; }
+        var sum = null;
+        try { sum = a.tree.readCatalogSummary(); } catch (e) { sum = null; }
+        var cursor = null;
+        try { cursor = a.config && a.config.readCursor ? a.config.readCursor() : null; } catch (e) { cursor = null; }
+        var cleanChapter = ${cleanChapterTitle.toString()};
+        var items = (cat.items || []).map(function (el) {
+          var txt = String(el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+          var m = txt.match(/(\\d+)\\s*个待完成/);
+          var label=el.querySelector('.chapter-title,.catalog_name,.catalog_title,.posCatalog_name');
+          return { title: cleanChapter(label ? label.textContent : txt), pending: m ? Number(m[1]) : a.tree.readCatalogPending(el) };
+        });
+        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor, jobs:a.tree.enumerate().map(j=>({type:j.type,state:j.state})) };
+      } catch (e) {
+        return { ok: false, reason: String((e && e.message) || e) };
+      }
+    })()`;
+    try {
+      const data=await view.webContents.executeJavaScript(code,true);
+      const id=coursePortal?.status().selected,key=await progressNamespace();
+      if(data.ok&&id&&key){
+        store.courseProgressByAccount ||= {};const cache=store.courseProgressByAccount[key] ||= {};const saved=cache[id] ||= {chapters:{}};
+        if(data.summary&&Number(data.summary.total)>0&&data.summary.done>=0&&data.summary.done<=data.summary.total)saved.summary={done:Number(data.summary.done),total:Number(data.summary.total)};
+        const clean=cleanChapterTitle;
+        const active=data.progress?.items?.find(i=>i.active);const jobs=data.jobs||[];
+        const finished=type=>{const list=jobs.filter(j=>j.type===type);return list.length&&list.every(j=>j.state==='finished')?true:list.some(j=>j.state==='unfinished')?false:null};
+        for(const item of data.items||[]){const title=clean(item.title);const old=saved.chapters[title]||{};
+          if(item.pending===0)Object.assign(old,{complete:true});
+          else if(item.pending>0)old.complete=false;
+          if(active&&clean(active.text).startsWith(title.slice(0,Math.min(12,title.length))))Object.assign(old,{videoDone:finished('video'),quizDone:finished('work')});
+          saved.chapters[title]=old;Object.assign(item,old);
+        }
+        saved.updatedAt=Date.now();saveStore();
+      }
+      return {ok:true,data};
+    } catch (e) {
+      return { ok: false, reason: String((e && e.message) || e) };
+    }
+  });
+
+  // ---------------- 待办任务队列（持久化）----------------
+  // 存 userData/tasks.json；状态四态：todo/doing/done/manual
+  const TASKS_FILE = () => path.join(app.getPath('userData'), 'tasks.json');
+
+  function readTasks() {
+    try {
+      const f = TASKS_FILE();
+      if (!fs.existsSync(f)) return [];
+      const arr = JSON.parse(fs.readFileSync(f, 'utf8'));
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeTasks(list) {
+    try {
+      const f = TASKS_FILE();
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify(Array.isArray(list) ? list : [], null, 2), 'utf8');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  ipcMain.handle('tasks:list', async () => ({ ok: true, tasks: readTasks() }));
+
+  ipcMain.handle('tasks:save', async (_e, list) => writeTasks(list));
+
+  ipcMain.handle('tasks:add', async (_e, task) => {
+    const list = readTasks();
+    const now = Date.now();
+    const item = Object.assign(
+      {
+        id: 't_' + now + '_' + Math.random().toString(36).slice(2, 7),
+        courseId: '',
+        courseName: '',
+        chapterTitle: '',
+        type: 'all',
+        priority: 1,
+        status: 'todo',
+        note: '',
+      },
+      task || {},
+      { createdAt: now, updatedAt: now }
+    );
+    list.push(item);
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list, added: item } : r;
+  });
+
+  ipcMain.handle('tasks:update', async (_e, id, patch) => {
+    const list = readTasks();
+    const i = list.findIndex((t) => t && t.id === id);
+    if (i < 0) return { ok: false, error: 'NOT_FOUND' };
+    list[i] = Object.assign({}, list[i], patch || {}, { updatedAt: Date.now() });
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list, updated: list[i] } : r;
+  });
+
+  ipcMain.handle('tasks:remove', async (_e, id) => {
+    const list = readTasks().filter((t) => !t || t.id !== id);
+    const r = writeTasks(list);
+    return r.ok ? { ok: true, tasks: list } : r;
+  });
+
   // ---------------- 夜间静默模式 ----------------
   // 需求：确认后 30 秒关闭显示屏 + 静音，进入无人监管刷课。
   // 关屏用 WM_SYSCOMMAND/SC_MONITORPOWER；静音只作用于网页音频，不改系统音量，
@@ -538,7 +960,7 @@ function registerIpc() {
     try {
       const view = browser && browser.view;
       if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, error: 'no-view' };
-      view.webContents.setAudioMuted(!!muted);
+      browser.setMuted(!!muted);
       return { ok: true, muted: !!muted };
     } catch (e) {
       return { ok: false, error: String(e && e.message) };
@@ -599,7 +1021,7 @@ function registerIpc() {
 
   ipcMain.handle('night:cancel', async () => {
     if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
-    setAppMuted(false);
+    setAppMuted(store.defaultWebMuted===true);
     nightState = { pending: false, active: false, executeAt: 0, error: '' };
     bootLog('[night] cancelled');
     if (win && !win.isDestroyed()) win.webContents.send('night:changed', nightState);
@@ -623,7 +1045,90 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(async () => {
+  // ---------------------------------------------------------------- 托盘
+// 收起主窗口后仍能在托盘里看到状态、暂停、结束。
+let tray = null;
+let trayTimer = null;
+
+async function callRunner(method) {
+  const view = browser && browser.view;
+  if (!view || !view.webContents || view.webContents.isDestroyed()) return false;
+  try {
+    await view.webContents.executeJavaScript(
+      '(function(){var a=window.__cxNaturalWatchApp;if(a&&a.runner){try{a.runner.' + method + '();}catch(e){}}})()',
+      true
+    );
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function readRunnerLine() {
+  const view = browser && browser.view;
+  if (!view || !view.webContents || view.webContents.isDestroyed()) return '';
+  try {
+    return await view.webContents.executeJavaScript(
+      '(function(){' +
+        'var a=window.__cxNaturalWatchApp;' +
+        'if(!a||!a.runner)return "";' +
+        'try{var s=a.runner.snapshot();' +
+        'var label=s.stateLabel||s.state||"";' +
+        'var job=s.jobTitle?" · "+s.jobTitle:"";' +
+        'var v=s.video||{};' +
+        'var pct=v.duration>0?Math.round(((v.currentTime||0)/v.duration)*100)+"%":"";' +
+        'return label+job+(pct?" · "+pct:"");}catch(e){return "";}' +
+      '})()',
+      true
+    );
+  } catch (e) {
+    return '';
+  }
+}
+
+function rebuildTray(statusLine) {
+  if (!tray) return;
+  tray.setToolTip('课程伴学工具' + (statusLine ? '\n' + statusLine : ''));
+  const menu = Menu.buildFromTemplate([
+    { label: statusLine || '尚未进入课程', enabled: false },
+    { type: 'separator' },
+    { label: '显示主窗口', click: () => { if (win) { win.show(); win.focus(); } } },
+    { label: '暂停刷课', click: () => callRunner('pause') },
+    { label: '继续刷课', click: () => callRunner('resume') },
+    { label: '结束任务', click: () => callRunner('stop') },
+    { type: 'separator' },
+    { label: '退出程序', click: () => { isQuitting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(menu);
+}
+
+function createTray() {
+  try {
+    let img = null;
+    try {
+      const iconPath = path.join(__dirname, 'build', 'icon.ico');
+      if (fs.existsSync(iconPath)) img = nativeImage.createFromPath(iconPath);
+    } catch (e) {
+      img = null;
+    }
+    tray = new Tray(img && !img.isEmpty() ? img : nativeImage.createEmpty());
+    rebuildTray('');
+    tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
+    let lastLine = '';
+    trayTimer = setInterval(async () => {
+      const line = await readRunnerLine();
+      if (line && line !== lastLine) {
+        lastLine = line;
+        rebuildTray(line);
+      }
+    }, 3000);
+    bootLog('tray-created');
+  } catch (e) {
+    bootLog('tray-failed: ' + ((e && e.message) || e));
+  }
+}
+
+app.whenReady().then(async () => {
     bootLog('ready');
     loadStore();
     const userscript = loadUserscript();
@@ -631,6 +1136,7 @@ if (!gotLock) {
     injectCode = buildInjectCode(userscript);
     registerIpc();
     Menu.setApplicationMenu(null);
+    createTray();
     await createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) { closingWindow = false; createWindow().catch(fatalStartup); }
@@ -638,7 +1144,16 @@ if (!gotLock) {
   }).catch(fatalStartup);
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    // 有托盘时收进托盘继续运行；真正退出走托盘菜单
+    if (isQuitting && process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+    if (trayTimer) {
+      clearInterval(trayTimer);
+      trayTimer = null;
+    }
   });
 }
 
