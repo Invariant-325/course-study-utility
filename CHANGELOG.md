@@ -1,5 +1,29 @@
 # 更新日志
 
+## 0.2.0-beta.4 — 开关修改立即生效
+
+修复侧栏开关保存后，当前页面配置缓存没有立即更新的问题。
+
+[下载与更新说明](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.4)
+
+## 0.2.0-beta.3 — 异常提醒、学习统计与托盘
+
+新增异常提醒、学习统计和系统托盘；关闭窗口改为收进托盘。
+
+[下载与更新说明](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.3)
+
+## 0.2.0-beta.2 — 课程总览与待办任务
+
+新增课程总览、待办看板；调整章节测验开关位置。
+
+[下载与更新说明](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.2)
+
+## 0.2.0-beta.1 — 内置模型调用
+
+增加 App 内模型配置与直接调用接口，作为功能不完整的阶段版本归档。
+
+[下载与更新说明](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.0-beta.1)
+
 ## 0.1.9 — 夜间模式与测验开关
 
 新增网页静音、30 秒倒计时关屏、取消和退出夜间模式；新增章节测验自动做题与自动提交开关，新配置默认关闭。开启夜间模式会同时打开两个开关。未启用自动提交时，测验填写后等待人工提交。安装改为机器级，需要管理员权限。
