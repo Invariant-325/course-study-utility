@@ -265,18 +265,6 @@ $('qSubmit').onclick = () => {
 };
 
 // ---------------------------------------------------------------- 环境
-async function pollEnv() {
-  try {
-    const s = await App.visionStatus();
-    $('envDsh').textContent = s.dshFound ? '已就绪' : '未找到（答题不可用）';
-    $('envDsh').style.color = s.dshFound ? '#4ade80' : '#f28b82';
-    $('envKey').textContent = s.hasKey ? '已配置' : '缺失';
-    $('envKey').style.color = s.hasKey ? '#4ade80' : '#f28b82';
-  } catch (e) {
-    /* ignore */
-  }
-}
-
 async function pollPage() {
   try {
     const info = await App.pageInfo();
@@ -444,6 +432,73 @@ function bindNight() {
   }
 }
 
+// ---------------------------------------------------------------- 模型设置
+async function pollModel() {
+  try {
+    const s = await App.visionStatus();
+    const info = $('modelInfo');
+    if (!info) return;
+    if (s && s.hasKey) {
+      const src = s.keySource === 'app' ? '本 App' : s.keySource === 'env' ? '环境变量' : '本机 DSH';
+      info.textContent = '已配置（' + src + '）' + (s.keyMasked ? ' · ' + s.keyMasked : '');
+      info.style.color = '#4ade80';
+    } else {
+      info.textContent = '未配置 API Key —— 不填无法自动答题';
+      info.style.color = '#f0b429';
+    }
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function bindModel() {
+  const save = $('modelSave');
+  const test = $('modelTest');
+  const clear = $('modelClear');
+  const input = $('modelKey');
+  if (!save || !input) return;
+
+  save.onclick = async () => {
+    const key = String(input.value || '').trim();
+    if (!key) return msg('modelMsg', '请先粘贴 API Key', 'err');
+    const r = await App.setModelKey(key);
+    if (!r || !r.ok) {
+      const map = {
+        EMPTY_KEY: 'Key 为空',
+        ENCRYPTION_UNAVAILABLE: '系统加密不可用，无法安全保存',
+      };
+      return msg('modelMsg', '保存失败：' + (map[r && r.error] || (r && r.error) || '未知错误'), 'err');
+    }
+    input.value = '';
+    msg('modelMsg', '已保存（加密存储）' + (r.masked ? ' · ' + r.masked : ''), 'ok');
+    log('API Key 已保存', 'ok');
+    pollModel();
+  };
+
+  test.onclick = async () => {
+    msg('modelMsg', '正在测试连接…', 'info');
+    const r = await App.testModel();
+    if (r && r.ok) {
+      msg('modelMsg', '连接正常 · ' + (r.elapsedMs || 0) + 'ms · 模型 ' + r.model, 'ok');
+      log('模型连接正常', 'ok');
+    } else {
+      const hints = {
+        MISSING_CREDENTIAL: '还没配置 API Key',
+        NETWORK_ERROR: '网络不通，检查代理设置',
+      };
+      const extra = hints[r && r.error] || (r && r.error) || '';
+      msg('modelMsg', '连接失败：' + extra + (r && r.detail ? ' · ' + r.detail : ''), 'err');
+    }
+  };
+
+  clear.onclick = async () => {
+    if (!window.confirm('确定清除已保存的 API Key？清除后无法自动答题。')) return;
+    await App.clearModelKey();
+    msg('modelMsg', '已清除', 'info');
+    pollModel();
+  };
+}
+
 // ---------------------------------------------------------------- 版本
 async function showVersion() {
   try {
@@ -482,7 +537,8 @@ function init() {
   bindUpdate();
   bindQuizToggles();
   bindNight();
-  pollEnv();
+  bindModel();
+  pollModel();
   pollPage();
   pollRunner();
   pollQuiz();
@@ -490,7 +546,7 @@ function init() {
   setInterval(pollPage, 1500);
   setInterval(pollRunner, 1200);
   setInterval(pollQuiz, 4000);
-  setInterval(pollEnv, 20000);
+  setInterval(pollModel, 20000);
 }
 
 init();

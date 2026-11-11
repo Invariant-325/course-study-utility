@@ -30,6 +30,11 @@ if (isAppUi) {
     askVision: (payload) => ipcRenderer.invoke('vision:ask', payload),
     visionStatus: () => ipcRenderer.invoke('vision:status'),
 
+    // 模型设置（普通用户只需填 API Key）
+    setModelKey: (key) => ipcRenderer.invoke('model:setKey', key),
+    clearModelKey: () => ipcRenderer.invoke('model:clearKey'),
+    testModel: () => ipcRenderer.invoke('model:test'),
+
     // 运行状态（页面/标题）
     pageInfo: () => ipcRenderer.invoke('web:info'),
     appInfo: () => ipcRenderer.invoke('app:info'),

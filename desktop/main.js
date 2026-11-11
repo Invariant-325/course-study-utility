@@ -249,7 +249,59 @@ function dshHomeDir() {
   return dir;
 }
 
+// ---------------- 模型凭据 ----------------
+// 优先级：用户在本 App 里填的（safeStorage 加密存盘）> 环境变量 > 本机 DSH 凭据（兼容老用户）
+// 目的：普通用户不需要装 DSH、不需要改配置文件。
+const MODEL_ENDPOINT = 'https://api.deepseek.com/chat/completions';
+const DEFAULT_MODEL = 'deepseek-chat';
+
+function credentialsFile() {
+  return path.join(app.getPath('userData'), 'credentials.bin');
+}
+
+function loadStoredKey() {
+  try {
+    const f = credentialsFile();
+    if (!fs.existsSync(f)) return '';
+    if (!safeStorage.isEncryptionAvailable()) return '';
+    return String(safeStorage.decryptString(fs.readFileSync(f)) || '');
+  } catch (e) {
+    return '';
+  }
+}
+
+function storeKey(key) {
+  const value = String(key || '').trim();
+  if (!value) return { ok: false, error: 'EMPTY_KEY' };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'ENCRYPTION_UNAVAILABLE' };
+  try {
+    fs.mkdirSync(path.dirname(credentialsFile()), { recursive: true });
+    fs.writeFileSync(credentialsFile(), safeStorage.encryptString(value));
+    bootLog('[credential] stored (' + value.length + ' chars)');
+    return { ok: true, masked: maskKey(value) };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+}
+
+function clearStoredKey() {
+  try {
+    fs.rmSync(credentialsFile(), { force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+}
+
+function maskKey(key) {
+  const k = String(key || '');
+  if (k.length <= 8) return k ? '****' : '';
+  return k.slice(0, 3) + '****' + k.slice(-4);
+}
+
 function resolveApiKey() {
+  const stored = loadStoredKey();
+  if (stored) return stored;
   if (process.env.VISION_API_KEY) return process.env.VISION_API_KEY;
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
   const candidates = [
@@ -267,6 +319,12 @@ function resolveApiKey() {
     }
   }
   return '';
+}
+
+function keySource() {
+  if (loadStoredKey()) return 'app';
+  if (process.env.VISION_API_KEY || process.env.DEEPSEEK_API_KEY) return 'env';
+  return resolveApiKey() ? 'dsh' : '';
 }
 
 const SYSTEM_TASK = [
@@ -391,25 +449,69 @@ async function askVision(payload) {
     if (w > 4096 || h > 4096) return { ok: false, status: 'unreadable', error: 'IMAGE_DIMENSION_EXCEEDED' };
   }
 
-  const tmp = path.join(app.getPath('temp'), 'cx-vision');
-  fs.mkdirSync(tmp, { recursive: true });
-  const imgPath = path.join(tmp, 'req-' + require('node:crypto').randomUUID() + '.png');
-  fs.writeFileSync(imgPath, buf);
-
-  const task = [SYSTEM_TASK, '', '题目 ID：' + questionId, '题目截图（绝对路径）：' + imgPath, '请读取该图片并作答。'].join('\n');
   const started = Date.now();
-  const result = await runHeadless(task, 120000);
-  const elapsedMs = Date.now() - started;
-  try { fs.rmSync(imgPath, { force: true }); } catch (e) {}
 
-  if (result.code !== 0) {
-    const tail = String(result.stderr || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(-300);
-    return { ok: false, status: 'unreadable', error: 'SESSION_EXIT_' + result.code, stderr: tail, elapsedMs };
+  // 直连 DeepSeek（OpenAI 兼容）——不需要用户安装 DSH。
+  // 提示词内置，图片以 data URL 内联，返回严格 JSON。
+  let modelText = '';
+  try {
+    const res = await fetch(MODEL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + resolveApiKey(),
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_TASK },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '题目 ID：' + questionId + '。请阅读图片中的题目并作答。' },
+              { type: 'image_url', image_url: { url: 'data:image/png;base64,' + buf.toString('base64') } },
+            ],
+          },
+        ],
+        max_tokens: 400,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    const text = await res.text();
+    const elapsedMs = Date.now() - started;
+
+    if (!res.ok) {
+      const safe = String(text || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(0, 300);
+      return { ok: false, status: 'unreadable', error: 'HTTP_' + res.status, detail: safe, elapsedMs };
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      return { ok: false, status: 'unreadable', error: 'INVALID_RESPONSE', elapsedMs };
+    }
+
+    const content =
+      json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+    modelText = content || '';
+    if (!modelText) return { ok: false, status: 'unreadable', error: 'EMPTY_CONTENT', elapsedMs };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 'unreadable',
+      error: 'NETWORK_ERROR',
+      detail: String((e && e.message) || e).slice(0, 200),
+      elapsedMs: Date.now() - started,
+    };
   }
+
+  const elapsedMs = Date.now() - started;
 
   let parsed;
   try {
-    parsed = extractJson(result.stdout);
+    parsed = extractJson(modelText);
   } catch (e) {
     return { ok: false, status: 'unreadable', error: 'PARSE_FAILED', elapsedMs };
   }
@@ -471,12 +573,58 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('vision:status', async () => ({
-    dshFound: !!findDshCli(),
-    dshPath: findDshCli(),
-    hasKey: !!resolveApiKey(),
-    home: dshHomeDir(),
-  }));
+  ipcMain.handle('vision:status', async () => {
+    const key = resolveApiKey();
+    return {
+      hasKey: !!key,
+      keySource: keySource(),
+      keyMasked: maskKey(key),
+      endpoint: MODEL_ENDPOINT,
+      model: DEFAULT_MODEL,
+      // 兼容旧字段
+      dshFound: !!findDshCli(),
+      home: dshHomeDir(),
+    };
+  });
+
+  // ---- 模型设置（面向普通用户：填 Key 即用，不需要 DSH、不需要配置文件）----
+  ipcMain.handle('model:setKey', async (_e, key) => storeKey(key));
+  ipcMain.handle('model:clearKey', async () => clearStoredKey());
+
+  ipcMain.handle('model:test', async () => {
+    const key = resolveApiKey();
+    if (!key) return { ok: false, error: 'MISSING_CREDENTIAL' };
+    const started = Date.now();
+    try {
+      const res = await fetch(MODEL_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body: JSON.stringify({
+          model: DEFAULT_MODEL,
+          messages: [{ role: 'user', content: '只回复两个字：可用' }],
+          max_tokens: 16,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const text = await res.text();
+      const elapsedMs = Date.now() - started;
+      if (!res.ok) {
+        const safe = String(text || '').replace(/sk-[A-Za-z0-9]{8,}/g, 'sk-***').slice(0, 200);
+        return { ok: false, error: 'HTTP_' + res.status, detail: safe, elapsedMs };
+      }
+      let content = '';
+      try {
+        const j = JSON.parse(text);
+        content = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '');
+      } catch (e) {
+        /* ignore */
+      }
+      return { ok: true, content: content.slice(0, 40), elapsedMs, model: DEFAULT_MODEL };
+    } catch (e) {
+      return { ok: false, error: 'NETWORK_ERROR', detail: String((e && e.message) || e).slice(0, 200), elapsedMs: Date.now() - started };
+    }
+  });
 
   // 版本与安装位置（用于 UI 显示与升级排查）
   ipcMain.handle('app:info', async () => ({
