@@ -9,6 +9,7 @@ assert.deepEqual(plan({strategy:'quiz-only'}).map(x=>x.kind),['quiz','quiz','che
 assert.deepEqual(plan({strategy:'video-only'}).map(x=>x.kind),['video','check']);
 assert(buildStudyPlan({chapters:[chapters[0]]})[0].name.startsWith('等待你完成'));
 assert(plan({autoSubmit:true})[0].sub.includes('自动提交'));
+assert.equal(buildStudyPlan({chapters:[{name:'Known count',key:'k',state:'todo',pending:1,videoDone:null,quizDone:null}]})[0].kind,'check');
 console.log('PASS plan: exact task order, strategy filtering, unknown progress, quiz and submit switches');
 function fixture({wrong=false,submitted=false,delay=0}={}){
  let selected='course1',stopped=0,runs=0,options=null;

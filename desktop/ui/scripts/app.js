@@ -105,7 +105,7 @@ function renderSideCourses() {
   const box = $('#sideCourses');
   if (!box) return;
   box.innerHTML = COURSES.map((c) => {
-    const rel = c.total == null ? '还没查看' : c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需要检查' : '未开始';
+    const rel=c.total==null?'还没查看':c.done>=c.total?'已完成':c.done>0?'已完成 '+Math.round(c.done/c.total*100)+'%':c.state==='doing'?'进行中':'未开始';
     return (
       '<button class="lnk" data-selected="'+(c.id===selectedCourse)+'" data-course="' + escapeHtml(c.id) + '" data-state="' + c.state + '">' +
         '<span class="dot"></span>' +
@@ -119,8 +119,7 @@ function renderSideCourses() {
     el.addEventListener('click', () => {
       const c = COURSES.find((x) => x.id === el.dataset.course);
       if (!c) return;
-      goto('workspace');
-      snack('已切换到「' + c.name + '」');
+      selectCourse(c.id);
     });
   });
 }
@@ -240,7 +239,7 @@ function bindAccount() {
             '<span class="cc-name">' + escapeHtml(c.name) + '</span>' +
           '</div>' +
           '<div class="cc-meta">' + stateChip(c.state) +
-            '<span>' + (c.total == null ? '点击查看章节' : c.done + '/' + c.total + ' 任务点') + '</span>' +
+            '<span>' + (c.total == null ? '点击查看章节' : c.done + '/' + c.total + (c.unit==='chapters'?' 章节':' 任务点')) + '</span>' +
           '</div>' +
           '<div class="cc-foot">' +
             (c.total==null ? '<span class="t-on-surface-variant">暂无进度</span>' : '<div class="progress" role="progressbar" aria-valuenow="'+c.done+'" aria-valuemax="'+c.total+'"><i style="width:'+pct+'%"></i></div>') +
@@ -265,12 +264,12 @@ function bindAccount() {
     if (!box) return;
     if($('#wkMeta'))$('#wkMeta').textContent=CHAPTERS.length?CHAPTERS.length+' 个章节':'还没有章节信息';
     const picker=$('#manualQuizChapter');if(picker){const selected=picker.value;picker.innerHTML='<option value="">选择章节</option>'+CHAPTERS.filter(c=>!c.locked).map(c=>'<option value="'+escapeHtml(c.key)+'">'+escapeHtml(c.name)+'</option>').join('');if(CHAPTERS.some(c=>c.key===selected))picker.value=selected;}
-    const list=chapterFilter==='all'?CHAPTERS:buildStudyPlan({chapters:CHAPTERS,strategy:'sequential',autoQuiz:true}).map(task=>{const c=CHAPTERS.find(c=>c.key===task.chapterKey);return {...c,name:task.name,state:task.kind==='check'?'unknown':c.state,taskKind:task.kind};});
+    const list=chapterFilter==='all'?CHAPTERS:buildStudyPlan({chapters:CHAPTERS,strategy:'sequential',autoQuiz:true}).map(task=>{const c=CHAPTERS.find(c=>c.key===task.chapterKey);return {...c,name:task.name,state:c.state,taskKind:task.kind};});
     box.innerHTML = list.map((c) =>
       '<button class="chapter" data-chapter="' + escapeHtml(c.key||'') + '" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + (c.locked?' disabled':'') + '>' +
         '<span class="ch-dot"></span>' +
         '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
-        '<span class="ch-count">' + (c.taskKind==='check'?'需要先检查':c.taskKind?'未完成':{done:'全部完成',video:'视频已完成',quiz:'习题已完成',todo:'都没完成',unknown:'进度待更新'}[c.state]||'进度待更新') + '</span>' +
+        '<span class="ch-count">' + (c.taskKind==='check'?'需要先检查':c.taskKind?'未完成':{done:'全部完成',video:'视频已完成',quiz:'习题已完成',todo:c.pending>0?'还有 '+c.pending+' 项未完成':'都没完成',partial:'已完成一部分',unknown:'正在读取进度'}[c.state]||'进度待更新') + '</span>' +
       '</button>'
     ).join('');
   }
@@ -389,7 +388,7 @@ function bindAccount() {
       const catalog = await App.coursesList();
       if (catalog && catalog.ok) {
         PROFILE=catalog.profile||PROFILE;renderAccount();
-        COURSES = catalog.courses.map(c => ({...c,total:c.progress?.summary?.total??null,done:c.progress?.summary?.done??0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
+        COURSES = catalog.courses.map(c => ({...c,unit:c.progress?.summary?.unit,total:c.progress?.summary?.total??null,done:c.progress?.summary?.done??0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
         const counter = $('#courseCount'); if (counter) counter.textContent = String(COURSES.length);
       }
     }
@@ -399,7 +398,9 @@ function bindAccount() {
       if (!d || !d.ok) return;
       const items = Array.isArray(d.items) ? d.items : [];
       const heading=document.querySelector('.page[data-page="workspace"] h1');if(heading)heading.textContent=COURSES.find(c=>c.id===selectedCourse)?.name||'当前课程';
-      const sum = d.summary || {};
+      const knownItems=items.length&&items.every(i=>i.pending!==null&&i.pending!==undefined);
+      const sum=d.summary||(knownItems?{done:items.filter(i=>i.pending===0).length,total:items.length,unit:'chapters'}:{});
+      if(selectedCourse&&sum.total>0){const course=COURSES.find(c=>c.id===selectedCourse);if(course)Object.assign(course,{done:sum.done,total:sum.total,unit:sum.unit,state:sum.done>=sum.total?'done':sum.done>0?'doing':'selected'});}
       const cursor = d.cursor || {};
       const total = Number(sum.total) || items.length;
       const done = Number(sum.done) || 0;
@@ -407,8 +408,8 @@ function bindAccount() {
       CHAPTERS = items.map((it,index) => ({
         key:it.key||'tree-'+index,locked:!!it.locked,videoDone:it.videoDone,quizDone:it.quizDone,complete:it.complete,
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
-        state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.videoDone===false&&it.quizDone===false?'todo':'unknown',
-        pending: it.pending || 0,
+        state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.completed>0?'partial':it.pending>0?'todo':'unknown',
+        pending:it.pending??null,
         current: cursor.jobTitle ? it.title.indexOf(String(cursor.jobTitle).slice(0, 12)) >= 0 : false,
       }));
 
@@ -476,14 +477,14 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'需要确认进度',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已加载':'正在读取课程';
+      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'正在核对课程状态',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已加载':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'需要确认进度',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
+    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'正在核对课程状态',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
@@ -704,9 +705,11 @@ function bindAccount() {
     try {
       const r=await App.courseOpen(id);
       if (!r?.ok) { snack(r?.error || '课程打开失败'); return; }
-      await loadRunnerState(); await loadCourses(); renderChapters(); await pollCourseStatus();
+      await loadCourses();renderChapters();renderQueue();await loadRunnerState();await pollCourseStatus();
     } catch(e) {snack('课程打开失败：'+e.message);}
   }
+  let liveRefreshPromise=null;
+  function refreshLiveOverview(){if(!liveRefreshPromise)liveRefreshPromise=loadCourses().then(()=>{renderCourses();renderSideCourses();renderChapters();renderQueue();}).finally(()=>{liveRefreshPromise=null;});return liveRefreshPromise;}
   async function pollCourseStatus() {
     if (!App?.courseStatus) return;
     const state=await App.courseStatus();
@@ -1068,6 +1071,7 @@ function bindAccount() {
     bindTheme();
     bindAccount();
     bindNight();
+    App?.onCourseChanged?.(()=>refreshLiveOverview().catch(()=>{}));
     bindLearning().catch(()=>snack("学习偏好加载失败"));
     bindProduct().catch(()=>{});
     $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
@@ -1101,7 +1105,7 @@ function bindAccount() {
     }
     updateFab();
 
-    if(App?.courseStatus){pollCourseStatus().catch(()=>{});setInterval(()=>pollCourseStatus().catch(()=>{}),1500);setInterval(()=>loadCourses().then(()=>{renderCourses();renderSideCourses();}).catch(()=>{}),5000);}
+    if(App?.courseStatus){pollCourseStatus().catch(()=>{});setInterval(()=>pollCourseStatus().catch(()=>{}),1500);setInterval(()=>refreshLiveOverview().catch(()=>{}),1500);}
 
     // 定时刷新真实状态
     if (!IS_PREVIEW) {

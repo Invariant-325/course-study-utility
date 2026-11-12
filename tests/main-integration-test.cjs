@@ -20,6 +20,15 @@ app.whenReady().then(async()=>{try{
  const overview=await ui('window.__cxApp.courseOverview()');assert(overview.data.ok);assert.equal(overview.data.items[0].title,'1.1 章节标题');assert.deepEqual(overview.data.summary,{done:19,total:59});
  list=await ui('window.__cxApp.coursesList()');assert.deepEqual(list.courses[0].progress.summary,{done:19,total:59});
  console.log('PASS actual main/preload fallback reads course homepage and persists genuine summary without runner');
+ const catalogWeb=webContents.getAllWebContents().find(w=>w!==win.webContents&&w.getURL().includes('/mycourse/stu'));
+ assert(catalogWeb);await ui('window.courseUpdates=0;window.__cxApp.onCourseChanged(()=>window.courseUpdates++);true');
+ const catalogFrame=catalogWeb.mainFrame.frames.find(f=>f.url.includes('/mycourse/catalog'));assert(catalogFrame);
+ await catalogFrame.executeJavaScript(`document.querySelector('.catalog_points').setAttribute('aria-label','0个待完成任务点');document.querySelector('.catalog_points').textContent='0';true`);
+ await pause(350);assert((await ui('window.courseUpdates'))>0,'directory mutation must notify UI immediately');
+ const updated=await ui('window.__cxApp.courseOverview()');assert.equal(updated.data.items[0].pending,0);assert.equal(updated.data.items[0].complete,true);
+ await catalogFrame.executeJavaScript(`document.querySelector('.catalog_points').textContent='2';document.querySelector('.catalog_points').removeAttribute('aria-label');true`);
+ console.log('PASS actual main overview immediately reads directory DOM mutations without refresh click');
+
  await ui('window.__cxApp.courseStart()');await pause(200);await ui('window.__cxApp.coursesList()');
  let web;for(let i=0;i<50;i++){await ui('window.__cxApp.coursesList()');web=webContents.getAllWebContents().find(w=>w!==win.webContents&&w.getURL().includes('/mycourse/studentstudy'));if(web&&await web.executeJavaScript('window.starts')===1)break;await pause(100)}assert(web);console.log('STATE',JSON.stringify(await ui('window.__cxApp.courseStatus()')),await web.executeJavaScript('JSON.stringify({mounted:!!window.__cxNaturalWatchApp?.tree,path:location.pathname,state:window.__cxNaturalWatchApp?.runner?.snapshot()})'));assert.equal(await web.executeJavaScript('window.starts'),1);
  assert((await ui('window.__cxApp.evalMain("!!window.__cxNaturalWatchApp.runner")')).result);

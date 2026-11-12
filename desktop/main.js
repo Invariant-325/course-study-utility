@@ -176,6 +176,8 @@ function collectFrames(frame, out) {
   }
 }
 
+let courseChangedTimer;
+function notifyCourseChanged(){clearTimeout(courseChangedTimer);courseChangedTimer=setTimeout(()=>{if(win&&!win.isDestroyed())win.webContents.send('course:changed');},100);}
 function injectAllFrames(wc) {
   if (!wc || wc.isDestroyed() || !injectCode || !isPlatformUrl(wc.getURL())) return;
   const frames = [];
@@ -185,7 +187,7 @@ function injectAllFrames(wc) {
   for (const frame of frames) {
     try {
       if (!isPlatformUrl(frame.url)) continue;
-      frame.executeJavaScript(frameSetup + injectCode, true).catch(() => bootLog('frame-injection-retry-needed'));
+      frame.executeJavaScript(frameSetup + injectCode, true).then(notifyCourseChanged).catch(() => bootLog('frame-injection-retry-needed'));
     } catch { /* navigation may detach the frame */ }
   }
 }
@@ -603,6 +605,7 @@ function registerIpc() {
   ipcMain.handle('courses:refresh', async() => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.refresh():{ok:false};});
   ipcMain.handle('courses:open', async(_e,id) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.open(id):{ok:false};});
   ipcMain.handle('course:openChapter', async(_e,chapter) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.openChapter(chapter):{ok:false};});
+  ipcMain.on('course:domChanged',event=>{if(event.sender===browser?.view?.webContents&&isPlatformUrl(event.senderFrame?.url))notifyCourseChanged();});
   ipcMain.handle('course:refreshProgress',()=>coursePortal?coursePortal.refreshProgress():{ok:false});
 
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
@@ -886,10 +889,10 @@ function registerIpc() {
         try { cursor = a.config && a.config.readCursor ? a.config.readCursor() : null; } catch (e) { cursor = null; }
         var cleanChapter = ${cleanChapterTitle.toString()};
         var items = (cat.items || []).map(function (el) {
-          var txt = String(el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
-          var m = txt.match(/(\\d+)\\s*个待完成/);
-          var label=el.querySelector('.chapter-title,.catalog_name,.catalog_title,.posCatalog_name');
-          return { title: cleanChapter(label ? label.textContent : txt), pending: m ? Number(m[1]) : a.tree.readCatalogPending(el) };
+          var label=el.querySelector('.chapter-title,.catalog_name,.catalog_title,.posCatalog_name,span[title]');
+          var title=cleanChapter(label?.textContent||label?.getAttribute('title')||el.textContent||'');
+          var progress=a.tree.readCatalogState?.(el)||{pending:a.tree.readCatalogPending(el)};
+          return {title,...progress};
         });
         return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor,tabs:a.tree.readTaskTabs?.(), jobs:a.tree.enumerate().map(j=>({type:j.type,state:j.state})) };
       } catch (e) {
@@ -903,18 +906,23 @@ function registerIpc() {
         const value=await frame.executeJavaScript(code,true).catch(()=>null);
         if(value?.ok&&value.items?.length){data=value;break;}
       }
-      if(!data)data=await coursePortal.overview();
+      const landing=await coursePortal.overview();
+      const known=value=>(value?.items||[]).filter(i=>i.pending!==null&&i.pending!==undefined).length;
+      if(!data||known(landing)>known(data))data=landing;
       const id=coursePortal?.status().selected,key=await progressNamespace();
       if(data.ok&&id&&key){
         store.courseProgressByAccount ||= {};const cache=store.courseProgressByAccount[key] ||= {};const saved=cache[id] ||= {chapters:{}};
         if(data.summary&&Number(data.summary.total)>0&&data.summary.done>=0&&data.summary.done<=data.summary.total)saved.summary={done:Number(data.summary.done),total:Number(data.summary.total)};
+        if(!data.summary&&data.items?.length&&data.items.every(i=>i.pending!==null&&i.pending!==undefined))saved.summary={done:data.items.filter(i=>i.pending===0).length,total:data.items.length,unit:'chapters'};
         const clean=cleanChapterTitle;
         const active=data.progress?.items?.find(i=>i.active);const jobs=data.jobs||[];
         const finished=type=>{const list=jobs.filter(j=>j.type===type);return list.length&&list.every(j=>j.state==='finished')?true:list.some(j=>j.state==='unfinished')?false:null};
         for(const item of data.items||[]){const title=clean(item.title);const old=saved.chapters[title]||{};
-          if(item.pending===0)Object.assign(old,{complete:true});
-          else if(item.pending>0)old.complete=false;
-          if(active&&clean(active.text).startsWith(title.slice(0,Math.min(12,title.length))))Object.assign(old,{videoDone:finished('video'),quizDone:finished('work'),hasVideo:jobs.some(j=>j.type==='video')||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});
+          const known=item.pending!==null&&item.pending!==undefined;
+          if(known&&old.pending!==item.pending){delete old.videoDone;delete old.quizDone;delete old.complete;}
+          if(known)Object.assign(old,{pending:item.pending,complete:item.pending===0});
+          for(const field of ['videoDone','quizDone','completed','total'])if(item[field]!==null&&item[field]!==undefined)old[field]=item[field];
+          if(active&&clean(active.title||active.text)===title&&item.pending!==0){const videoDone=finished('video'),quizDone=finished('work');if(old.videoDone==null&&videoDone!==null)old.videoDone=videoDone;if(old.quizDone==null&&quizDone!==null)old.quizDone=quizDone;Object.assign(old,{hasVideo:jobs.some(j=>j.type==='video')||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});}
           saved.chapters[title]=old;Object.assign(item,old);
         }
         saved.updatedAt=Date.now();saveStore();

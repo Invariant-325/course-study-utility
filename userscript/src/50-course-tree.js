@@ -19,25 +19,22 @@ const CourseTree = (function () {
     if(typeof window.fetch!=='function'||typeof window.DOMParser!=='function')return {ok:false,reason:'unavailable'};
     if(refreshing)return refreshing;
     if(!force&&freshCatalog.url===location.href&&Date.now()-freshCatalog.at<30000)return {ok:true,cached:true};
-    const url=location.href;
+    const url=location.href,baseline=new Map(catalogEntries().items.map(el=>[chapterName(el),JSON.stringify(readChapterProgress(el))]));
     if(!force&&lastAttempt.url===url&&Date.now()-lastAttempt.at<30000)return {ok:false,reason:'cooldown'};
     lastAttempt={url,at:Date.now()};
     refreshing=(async()=>{const controller=new window.AbortController();const timer=setTimeout(()=>controller.abort(),6000);
       try{
-        const response=await window.fetch(url,{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
+        const response=await window.fetch(catalogRequestUrl(),{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
         if(!response.ok||location.href!==url)return {ok:false,reason:'navigation-or-network'};
-        const doc=new window.DOMParser().parseFromString(await response.text(),'text/html');
+        const doc=new window.DOMParser().parseFromString(await readPlatformHtml(response),'text/html');
         const nodes=[...doc.querySelectorAll('.posCatalog_select')].filter(el=>!el.classList.contains(SEL.firstLayerClass));
         if(!nodes.length)return {ok:false,reason:'no-fresh-catalog'};
         const counts=new Map();
-        for(const el of nodes){const raw=Dom.textOf(el,200),m=raw.match(SEL.catalogPendingPattern);let pending=m?Number(m[1]):null;
-          if(pending===null&&el.querySelector('[title="已完成"],[aria-label="已完成"],.catalog_points_yi,.catalog_points_done'))pending=0;
-          if(pending!==null)counts.set(chapterName(el),pending);
-        }
+        for(const el of nodes){const value=readChapterProgress(el);if(value.pending!==null)counts.set(chapterName(el),value.pending);}
         if(location.href!==url)return {ok:false,reason:'navigation'};
         const walker=doc.createTreeWalker(doc.body,4),parts=[];while(walker.nextNode())parts.push(walker.currentNode.nodeValue);
         const sum=parts.join(' ').match(/已完成任务点\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/);
-        freshCatalog={url,at:Date.now(),counts,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
+        freshCatalog={url,at:Date.now(),counts,baseline,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
         return {ok:true,known:counts.size};
       }catch{return {ok:false,reason:'refresh-failed'}}finally{clearTimeout(timer);refreshing=null;}
     })();return refreshing;
@@ -46,7 +43,7 @@ const CourseTree = (function () {
   function selectFirstIncomplete(){
     const items=catalogEntries().items;if(!items.length)return {ok:true,changed:false};
     const first=items.find(el=>readCatalogPending(el)!==0);if(!first)return {ok:true,changed:false};
-    if(readCatalogPending(first)===null)return {ok:false,reason:'unknown-progress'};
+    // Unknown entries are inspected by opening their actual chapter; never mark them complete.
     if(isActiveItem(first))return {ok:true,changed:false};
     const before=signatureOf(enumerate());
     return {ok:Dom.click(queryFirst(first,SEL.catalogNameNode)||first),changed:true,before};
@@ -437,14 +434,13 @@ const CourseTree = (function () {
   // ---------- 目录层完成度 ----------
   function readCatalogPending(itemEl) {
     if (!itemEl) return null;
-    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(chapterName(itemEl)))return freshCatalog.counts.get(chapterName(itemEl));
-    const text = Dom.textOf(itemEl, 200);
-    if (!text) return null;
-    const match = text.match(SEL.catalogPendingPattern);
-    if (!match) return null;
-    const value = Number(match[1]);
-    return isFinite(value) ? value : null;
+    const live=readChapterProgress(itemEl),name=chapterName(itemEl);
+    // A later DOM mutation is newer than a fetched snapshot. Zero on screen always wins.
+    if(live.pending===0)return 0;
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(name)&&freshCatalog.baseline?.get(name)===JSON.stringify(live))return freshCatalog.counts.get(name);
+    return live.pending;
   }
+  function readCatalogState(itemEl){const live=readChapterProgress(itemEl),pending=readCatalogPending(itemEl);return {...live,pending,complete:pending===0?true:pending>0?false:null};}
 
   function isFirstLayer(el) {
     try {
@@ -478,6 +474,7 @@ const CourseTree = (function () {
         continue;
       }
       leafItems.push({
+        title:chapterName(el),
         text: Dom.textOf(el, 48),
         pending: readCatalogPending(el),
         active: isActiveItem(el),
@@ -643,7 +640,7 @@ const CourseTree = (function () {
     openWorkJob,
     catalogEntries,
     catalogProgress,
-    readCatalogPending,
+    readCatalogPending,readCatalogState,
     readCatalogSummary,
     readTaskTabs,
     clickNextCatalogItem,

@@ -144,7 +144,7 @@ function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStra
         state.phase='opening';
         let catalogFrame=null,catalog=null;
         for(const frame of all){const value=await frame.executeJavaScript(catalogCode(),true).catch(()=>null);if(value?.ok){catalog=value;catalogFrame=frame;break;}}
-        if(catalog){await catalogFrame.executeJavaScript(refreshCatalogCode(),true).catch(()=>null);state.phase='chapters';state.error='';if(!pendingStart)return;}
+        if(catalog){catalogFrame.executeJavaScript(refreshCatalogCode(),true).catch(()=>null);state.phase='chapters';state.error='';if(!pendingStart)return;}
         if(Date.now()-openingSince>25000){state.phase='manual';state.error='未能打开章节，可在主界面重试或显示网页查看';}
         if(catalog&&pendingStart){
           const key=catalogFrame.url,attempt=attempted.get(key);

@@ -779,6 +779,53 @@ const Dom = (function () {
 })();
 
 // ===========================================================================
+// 45-catalog-progress.js
+// ===========================================================================
+// One DOM reader for the landing catalog, learning catalog and desktop overview.
+// Only explicit platform labels/counts are completion evidence.
+function readChapterProgress(node) {
+ const norm=s=>String(s||'').replace(/\s+/g,' ').trim();
+ const content=norm(node?.textContent);
+ const marked=[node,...(node?.querySelectorAll('[title],[aria-label],[data-pending],[data-unfinished],.catalog_points,.chapter_points,.chapter-status,.catalog_state,.chapter-state,.icon_Completed,.catalog_points_done,.catalog_finish,.chapter-complete,.icon-complete,.icon_completed')||[])];
+ const hints=marked.flatMap(e=>[e.getAttribute?.('aria-label'),e.getAttribute?.('title')]).filter(Boolean).map(norm);
+ const values=[...hints,content];let pending=null,total=null,completed=null;
+ for(const e of marked)for(const attr of ['data-pending','data-unfinished']){const value=e.getAttribute?.(attr);if(value!==null&&value!==undefined&&/^\d+$/.test(value))pending=Number(value);}
+ for(const value of values){
+  const count=value.match(/(\d+)\s*个\s*(?:待完成|未完成)(?:任务点)?|(?:待完成|未完成)(?:任务点)?\s*[:：]\s*(\d+)/);
+  if(count&&pending===null)pending=Number(count[1]??count[2]);
+  const ratio=value.match(/(?:已完成任务点|已完成|任务点)\s*[:：]?\s*(\d+)\s*[/／]\s*(\d+)/);
+  if(ratio&&Number(ratio[1])<=Number(ratio[2])){completed=Number(ratio[1]);total=Number(ratio[2]);if(pending===null)pending=total-completed;}
+ }
+ const statuses=[...(node?.querySelectorAll('.catalog_points,.chapter_points,.chapter-status,.catalog_state,.chapter-state,[data-pending],[aria-label],[title]')||[])];
+ if(pending===null){const numeric=statuses.find(e=>e.matches('.catalog_points,.chapter_points')&&/^\d+$/.test(norm(e.textContent)));if(numeric)pending=Number(norm(numeric.textContent));}
+ const completeMarker=marked.some(e=>e.matches?.('.icon_Completed,.catalog_points_done,.catalog_finish,.chapter-complete,.icon-complete,.icon_completed'))||[...hints,...statuses.map(e=>norm(e.textContent))].some(s=>/^(?:已完成(?:任务点)?|全部完成|任务点已完成)$/.test(s));
+ if(completeMarker&&pending===null)pending=0;
+ const kindDone=kind=>{for(const value of values){const m=value.match(kind==='video'?/(?:课程视频|视频)(?:任务)?\s*[:：]?\s*(未完成|待完成|已完成)/:/(?:章节测验|章节习题|习题|测验)(?:任务)?\s*[:：]?\s*(未完成|待完成|已完成)/);if(m)return m[1]==='已完成';}return null;};
+ let videoDone=kindDone('video'),quizDone=kindDone('quiz');
+ if(pending===null&&videoDone!==null&&quizDone!==null)pending=Number(!videoDone)+Number(!quizDone);
+ return {pending,total,completed,complete:pending===0?true:pending>0?false:null,videoDone,quizDone};
+}
+if(typeof module!=='undefined'&&module.exports)module.exports={readChapterProgress,readPlatformHtml,catalogRequestUrl};
+
+// Reuse the platform's own observed directory request, including its original parameters.
+function catalogRequestUrl(){
+ const valid=value=>{try{const u=new URL(value,location.href);return u.protocol==='https:'&&/(^|\.)(chaoxing|xuexitong)\.com$/i.test(u.hostname)&&/\/mycourse\/studentstudycourselist$/.test(u.pathname)}catch{return false}};
+ const resources=window.performance?.getEntriesByType?.('resource')||[];
+ const entry=[...resources].reverse().find(e=>valid(e.name));
+ if(entry)window.__cxCatalogReadRequest={page:location.href,url:entry.name};
+ const previous=window.__cxCatalogReadRequest;
+ return previous?.page===location.href&&valid(previous.url)?previous.url:location.href;
+}
+async function readPlatformHtml(response){
+ if(typeof response.arrayBuffer!=='function')return response.text();
+ const bytes=await response.arrayBuffer();
+ const header=response.headers?.get?.('content-type')||'';
+ const prefix=new TextDecoder('utf-8').decode(bytes.slice(0,2048));
+ const charset=/charset\s*=\s*["']?([a-z0-9_-]+)/i.exec(header)?.[1]||/charset\s*=\s*["']?(gbk|gb2312|gb18030)/i.exec(prefix)?.[1]||'utf-8';
+ return new TextDecoder(charset).decode(bytes);
+}
+
+// ===========================================================================
 // 50-course-tree.js
 // ===========================================================================
 // ---------------------------------------------------------------------------
@@ -802,25 +849,22 @@ const CourseTree = (function () {
     if(typeof window.fetch!=='function'||typeof window.DOMParser!=='function')return {ok:false,reason:'unavailable'};
     if(refreshing)return refreshing;
     if(!force&&freshCatalog.url===location.href&&Date.now()-freshCatalog.at<30000)return {ok:true,cached:true};
-    const url=location.href;
+    const url=location.href,baseline=new Map(catalogEntries().items.map(el=>[chapterName(el),JSON.stringify(readChapterProgress(el))]));
     if(!force&&lastAttempt.url===url&&Date.now()-lastAttempt.at<30000)return {ok:false,reason:'cooldown'};
     lastAttempt={url,at:Date.now()};
     refreshing=(async()=>{const controller=new window.AbortController();const timer=setTimeout(()=>controller.abort(),6000);
       try{
-        const response=await window.fetch(url,{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
+        const response=await window.fetch(catalogRequestUrl(),{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
         if(!response.ok||location.href!==url)return {ok:false,reason:'navigation-or-network'};
-        const doc=new window.DOMParser().parseFromString(await response.text(),'text/html');
+        const doc=new window.DOMParser().parseFromString(await readPlatformHtml(response),'text/html');
         const nodes=[...doc.querySelectorAll('.posCatalog_select')].filter(el=>!el.classList.contains(SEL.firstLayerClass));
         if(!nodes.length)return {ok:false,reason:'no-fresh-catalog'};
         const counts=new Map();
-        for(const el of nodes){const raw=Dom.textOf(el,200),m=raw.match(SEL.catalogPendingPattern);let pending=m?Number(m[1]):null;
-          if(pending===null&&el.querySelector('[title="已完成"],[aria-label="已完成"],.catalog_points_yi,.catalog_points_done'))pending=0;
-          if(pending!==null)counts.set(chapterName(el),pending);
-        }
+        for(const el of nodes){const value=readChapterProgress(el);if(value.pending!==null)counts.set(chapterName(el),value.pending);}
         if(location.href!==url)return {ok:false,reason:'navigation'};
         const walker=doc.createTreeWalker(doc.body,4),parts=[];while(walker.nextNode())parts.push(walker.currentNode.nodeValue);
         const sum=parts.join(' ').match(/已完成任务点\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/);
-        freshCatalog={url,at:Date.now(),counts,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
+        freshCatalog={url,at:Date.now(),counts,baseline,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
         return {ok:true,known:counts.size};
       }catch{return {ok:false,reason:'refresh-failed'}}finally{clearTimeout(timer);refreshing=null;}
     })();return refreshing;
@@ -829,7 +873,7 @@ const CourseTree = (function () {
   function selectFirstIncomplete(){
     const items=catalogEntries().items;if(!items.length)return {ok:true,changed:false};
     const first=items.find(el=>readCatalogPending(el)!==0);if(!first)return {ok:true,changed:false};
-    if(readCatalogPending(first)===null)return {ok:false,reason:'unknown-progress'};
+    // Unknown entries are inspected by opening their actual chapter; never mark them complete.
     if(isActiveItem(first))return {ok:true,changed:false};
     const before=signatureOf(enumerate());
     return {ok:Dom.click(queryFirst(first,SEL.catalogNameNode)||first),changed:true,before};
@@ -1220,14 +1264,13 @@ const CourseTree = (function () {
   // ---------- 目录层完成度 ----------
   function readCatalogPending(itemEl) {
     if (!itemEl) return null;
-    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(chapterName(itemEl)))return freshCatalog.counts.get(chapterName(itemEl));
-    const text = Dom.textOf(itemEl, 200);
-    if (!text) return null;
-    const match = text.match(SEL.catalogPendingPattern);
-    if (!match) return null;
-    const value = Number(match[1]);
-    return isFinite(value) ? value : null;
+    const live=readChapterProgress(itemEl),name=chapterName(itemEl);
+    // A later DOM mutation is newer than a fetched snapshot. Zero on screen always wins.
+    if(live.pending===0)return 0;
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(name)&&freshCatalog.baseline?.get(name)===JSON.stringify(live))return freshCatalog.counts.get(name);
+    return live.pending;
   }
+  function readCatalogState(itemEl){const live=readChapterProgress(itemEl),pending=readCatalogPending(itemEl);return {...live,pending,complete:pending===0?true:pending>0?false:null};}
 
   function isFirstLayer(el) {
     try {
@@ -1261,6 +1304,7 @@ const CourseTree = (function () {
         continue;
       }
       leafItems.push({
+        title:chapterName(el),
         text: Dom.textOf(el, 48),
         pending: readCatalogPending(el),
         active: isActiveItem(el),
@@ -1426,7 +1470,7 @@ const CourseTree = (function () {
     openWorkJob,
     catalogEntries,
     catalogProgress,
-    readCatalogPending,
+    readCatalogPending,readCatalogState,
     readCatalogSummary,
     readTaskTabs,
     clickNextCatalogItem,
@@ -2819,6 +2863,7 @@ const Runner = (function () {
     stopAll();
     if (completion) R.completion = completion;
     Log.warn('无法确认完成：' + reason);
+    R.reviewCatalogSignature=JSON.stringify(CourseTree.catalogProgress().items);
     sm.go('needsReview', reason);
     publish();
   }
@@ -3075,6 +3120,7 @@ const Runner = (function () {
   function evaluateCompletion(jobs, inaccessible) {
     const progress = CourseTree.catalogProgress();
     const summary = CourseTree.readCatalogSummary();
+    if(progress.ok&&progress.total>0&&progress.unknown===0&&progress.pending===0)return {verdict:'complete',videoComplete:true,pendingOthers:0,totalLeaves:progress.total,reasons:[],catalog:progress,summary};
 
     const videoUnfinished = jobs.filter(function (job) {
       return job.state === 'unfinished' && (job.type === 'video' || job.type === 'unknown');
@@ -3229,7 +3275,8 @@ const Runner = (function () {
     publish();
 
     const beforeDetail = CourseTree.enumerateDetail();
-    const beforeJobs = beforeDetail.jobs;
+    const chapterComplete=CourseTree.currentCatalogComplete?.()===true;
+    const beforeJobs = chapterComplete?[]:beforeDetail.jobs;
     const beforeSignature = CourseTree.signatureOf(beforeJobs);
 
     // 1) 同页仍有未完成视频（排除已跳过待确认的任务）
@@ -3257,7 +3304,7 @@ const Runner = (function () {
     if(Config.get('studyStrategy')==='auto'){
       const active=CourseTree.catalogProgress().items.find(i=>i.active);
       const jobs=CourseTree.enumerateDetail().jobs;
-      if(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0){
+      if(active?.pending!==0&&(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0)){
         enterNeedsReview('自动策略：本章仍有未完成或待确认的任务，完成并刷新进度后继续');return;
       }
     }
@@ -3346,10 +3393,10 @@ const Runner = (function () {
       );
     }
 
-    let pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+    let pick = CourseTree.currentCatalogComplete?.()||Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
     let target = pick.job;
 
-    if (!target && !jobs.length) {
+    if (!target && !jobs.length&&!CourseTree.currentCatalogComplete?.()) {
       Log.info('未发现任务点，等待页面渲染（最多 8 秒）');
       const waited = await CourseTree.waitForJobsChange('', 8000);
       if (isStale(token)) return;
@@ -3371,7 +3418,7 @@ const Runner = (function () {
           '）'
       );
 
-      if (detail.stats.unknown > 0 && detail.stats.unfinished === 0) {
+      if (!CourseTree.currentCatalogComplete?.()&&detail.stats.unknown > 0 && detail.stats.unfinished === 0) {
         // 有任务点但无法判定完成态：这是证据不足，不是失败
         const completion = evaluateCompletion(detail.jobs, detail.inaccessible);
         enterNeedsReview(
@@ -3510,7 +3557,7 @@ const Runner = (function () {
       if (isStale(next)) return;
       if (R.currentJob && R.currentJob.container && R.currentJob.container.isConnected) {
         const jobState = CourseTree.readJobState(R.currentJob.container);
-        if (jobState.state === 'unfinished') {
+        if (!CourseTree.currentCatalogComplete?.()&&jobState.state === 'unfinished') {
           await playJob(R.currentJob, next, { continued: true });
           return;
         }
@@ -3678,7 +3725,7 @@ const Runner = (function () {
       // 当前任务点仍存在且未完成：直接接着播
       if (R.currentJob && R.currentJob.container && R.currentJob.container.isConnected) {
         const jobState = CourseTree.readJobState(R.currentJob.container);
-        if (jobState.state === 'unfinished') {
+        if (!CourseTree.currentCatalogComplete?.()&&jobState.state === 'unfinished') {
           await playJob(R.currentJob, token, { continued: true });
           return;
         }
@@ -3716,6 +3763,7 @@ const Runner = (function () {
     const catalog = CourseTree.catalogEntries();
     const progress = CourseTree.catalogProgress();
     const summary = CourseTree.readCatalogSummary();
+    if(progress.ok&&progress.total>0&&progress.unknown===0&&progress.pending===0)return {verdict:'complete',videoComplete:true,pendingOthers:0,totalLeaves:progress.total,reasons:[],catalog:progress,summary};
     const tabs = CourseTree.readTaskTabs();
     const video = VideoCtl.current();
 
@@ -3850,7 +3898,10 @@ const Runner = (function () {
     },
     async refreshProgress(force){
       const token=R.runToken;
-      const result=typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(force):{ok:false};
+      const live=CourseTree.catalogProgress();
+      const result=force&&typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(true):{ok:live.ok,source:'live-catalog'};
+      if(!force&&typeof CourseTree.refreshCatalog==='function')CourseTree.refreshCatalog(false).catch(()=>{});
+      if(!isStale(token)&&R.running&&sm.state()==='needsReview'&&R.reviewCatalogSignature!==JSON.stringify(CourseTree.catalogProgress().items)){resume();return result;}
       if(!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
         const video=VideoCtl.current();stopWatchdog();VideoCtl.detach();if(video)video.pause();
         Log.info('平台已确认当前视频任务完成，停止播放并检查本章后续任务');sm.go('settling','platform-confirmed');sm.go('advancing','platform-confirmed');goAdvance(token);

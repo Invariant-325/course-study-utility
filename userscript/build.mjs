@@ -63,3 +63,6 @@ const lines = output.split('\n').length;
 console.log('已生成 ' + OUT_FILE);
 console.log('  源文件: ' + files.length + ' 个');
 console.log('  体积:   ' + (bytes / 1024).toFixed(1) + ' KB / ' + lines + ' 行');
+
+// The desktop injects the identical reader into course landing frames.
+writeFileSync(join(ROOT, '../desktop/catalog-progress.cjs'),readFileSync(join(SRC,'45-catalog-progress.js'),'utf8'),'utf8');

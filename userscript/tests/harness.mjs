@@ -89,6 +89,7 @@ export function loadEnv(files, options = {}) {
     Event: dom.window.Event,
   };
 
+  if(files.includes('50-course-tree.js')&&!files.includes('45-catalog-progress.js'))files=files.flatMap(name=>name==='50-course-tree.js'?['45-catalog-progress.js',name]:[name]);
   let code = '';
   for (const name of files) {
     code += readFileSync(join(SRC, name), 'utf8') + '\n';

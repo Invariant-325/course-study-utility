@@ -11,7 +11,7 @@
 
 .lnk[data-selected=true]{background:var(--md-sys-color-primaryContainer);color:var(--md-sys-color-onPrimaryContainer);box-shadow:inset 3px 0 var(--md-sys-color-primary)}
 .chapter[data-state=done]{background:color-mix(in oklab,#2e9f63 13%,var(--md-sys-color-surface));color:light-dark(#176c3d,#8addaa)}
-.chapter[data-state=video],.chapter[data-state=quiz]{background:color-mix(in oklab,#d59b19 16%,var(--md-sys-color-surface));color:light-dark(#805900,#f1ca64)}
+.chapter[data-state=video],.chapter[data-state=quiz],.chapter[data-state=partial]{background:color-mix(in oklab,#d59b19 16%,var(--md-sys-color-surface));color:light-dark(#805900,#f1ca64)}
 .chapter[data-state=todo]{background:color-mix(in oklab,#d63d3d 12%,var(--md-sys-color-surface));color:light-dark(#ad2424,#ffaaaa)}
 .chapter[data-state=unknown]{color:var(--md-sys-color-onSurfaceVariant)}
 .chapter[data-state=video] .ch-dot,.chapter[data-state=quiz] .ch-dot,.chapter[data-state=todo] .ch-dot{background:currentColor}
@@ -43,3 +43,9 @@
 .study-shortcut{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--md-sys-color-onSurfaceVariant)}.study-shortcut select{font:inherit;color:var(--md-sys-color-primary);background:var(--md-sys-color-surfaceContainer);border:1px solid var(--md-sys-color-outlineVariant);border-radius:18px;padding:6px 10px;max-width:150px}
 
 .wktabs{flex-wrap:wrap;height:auto;min-height:48px;gap:8px}.study-shortcut select#manualQuizChapter{max-width:240px}.chapter .ch-count{white-space:nowrap}.switch:has(input:disabled){cursor:default}.switch input:disabled+.track{opacity:.5}
+
+/* A single control size for the course toolbar, including selects. */
+#wkTabs .study-shortcut select,#wkTabs .btn{box-sizing:border-box;height:36px;min-height:36px;max-height:36px;border-radius:18px;padding:0 14px;font-size:13px;line-height:normal;}
+#wkTabs .study-shortcut{min-height:36px;flex-shrink:0;white-space:nowrap;}
+#wkTabs{align-items:center;padding-block:8px;}
+.chapter[data-state=partial] .ch-dot{background:currentColor}

@@ -18,3 +18,5 @@ import './chapter-quiz.test.mjs';
 import './qa-quiz-gate.mjs';
 
 import './study-policy.test.mjs';
+
+import './catalog-live-progress.test.mjs';

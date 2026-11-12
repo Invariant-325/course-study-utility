@@ -217,6 +217,7 @@ const Runner = (function () {
     stopAll();
     if (completion) R.completion = completion;
     Log.warn('无法确认完成：' + reason);
+    R.reviewCatalogSignature=JSON.stringify(CourseTree.catalogProgress().items);
     sm.go('needsReview', reason);
     publish();
   }
@@ -473,6 +474,7 @@ const Runner = (function () {
   function evaluateCompletion(jobs, inaccessible) {
     const progress = CourseTree.catalogProgress();
     const summary = CourseTree.readCatalogSummary();
+    if(progress.ok&&progress.total>0&&progress.unknown===0&&progress.pending===0)return {verdict:'complete',videoComplete:true,pendingOthers:0,totalLeaves:progress.total,reasons:[],catalog:progress,summary};
 
     const videoUnfinished = jobs.filter(function (job) {
       return job.state === 'unfinished' && (job.type === 'video' || job.type === 'unknown');
@@ -627,7 +629,8 @@ const Runner = (function () {
     publish();
 
     const beforeDetail = CourseTree.enumerateDetail();
-    const beforeJobs = beforeDetail.jobs;
+    const chapterComplete=CourseTree.currentCatalogComplete?.()===true;
+    const beforeJobs = chapterComplete?[]:beforeDetail.jobs;
     const beforeSignature = CourseTree.signatureOf(beforeJobs);
 
     // 1) 同页仍有未完成视频（排除已跳过待确认的任务）
@@ -655,7 +658,7 @@ const Runner = (function () {
     if(Config.get('studyStrategy')==='auto'){
       const active=CourseTree.catalogProgress().items.find(i=>i.active);
       const jobs=CourseTree.enumerateDetail().jobs;
-      if(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0){
+      if(active?.pending!==0&&(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0)){
         enterNeedsReview('自动策略：本章仍有未完成或待确认的任务，完成并刷新进度后继续');return;
       }
     }
@@ -744,10 +747,10 @@ const Runner = (function () {
       );
     }
 
-    let pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+    let pick = CourseTree.currentCatalogComplete?.()||Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
     let target = pick.job;
 
-    if (!target && !jobs.length) {
+    if (!target && !jobs.length&&!CourseTree.currentCatalogComplete?.()) {
       Log.info('未发现任务点，等待页面渲染（最多 8 秒）');
       const waited = await CourseTree.waitForJobsChange('', 8000);
       if (isStale(token)) return;
@@ -769,7 +772,7 @@ const Runner = (function () {
           '）'
       );
 
-      if (detail.stats.unknown > 0 && detail.stats.unfinished === 0) {
+      if (!CourseTree.currentCatalogComplete?.()&&detail.stats.unknown > 0 && detail.stats.unfinished === 0) {
         // 有任务点但无法判定完成态：这是证据不足，不是失败
         const completion = evaluateCompletion(detail.jobs, detail.inaccessible);
         enterNeedsReview(
@@ -908,7 +911,7 @@ const Runner = (function () {
       if (isStale(next)) return;
       if (R.currentJob && R.currentJob.container && R.currentJob.container.isConnected) {
         const jobState = CourseTree.readJobState(R.currentJob.container);
-        if (jobState.state === 'unfinished') {
+        if (!CourseTree.currentCatalogComplete?.()&&jobState.state === 'unfinished') {
           await playJob(R.currentJob, next, { continued: true });
           return;
         }
@@ -1076,7 +1079,7 @@ const Runner = (function () {
       // 当前任务点仍存在且未完成：直接接着播
       if (R.currentJob && R.currentJob.container && R.currentJob.container.isConnected) {
         const jobState = CourseTree.readJobState(R.currentJob.container);
-        if (jobState.state === 'unfinished') {
+        if (!CourseTree.currentCatalogComplete?.()&&jobState.state === 'unfinished') {
           await playJob(R.currentJob, token, { continued: true });
           return;
         }
@@ -1114,6 +1117,7 @@ const Runner = (function () {
     const catalog = CourseTree.catalogEntries();
     const progress = CourseTree.catalogProgress();
     const summary = CourseTree.readCatalogSummary();
+    if(progress.ok&&progress.total>0&&progress.unknown===0&&progress.pending===0)return {verdict:'complete',videoComplete:true,pendingOthers:0,totalLeaves:progress.total,reasons:[],catalog:progress,summary};
     const tabs = CourseTree.readTaskTabs();
     const video = VideoCtl.current();
 
@@ -1248,7 +1252,10 @@ const Runner = (function () {
     },
     async refreshProgress(force){
       const token=R.runToken;
-      const result=typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(force):{ok:false};
+      const live=CourseTree.catalogProgress();
+      const result=force&&typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(true):{ok:live.ok,source:'live-catalog'};
+      if(!force&&typeof CourseTree.refreshCatalog==='function')CourseTree.refreshCatalog(false).catch(()=>{});
+      if(!isStale(token)&&R.running&&sm.state()==='needsReview'&&R.reviewCatalogSignature!==JSON.stringify(CourseTree.catalogProgress().items)){resume();return result;}
       if(!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
         const video=VideoCtl.current();stopWatchdog();VideoCtl.detach();if(video)video.pause();
         Log.info('平台已确认当前视频任务完成，停止播放并检查本章后续任务');sm.go('settling','platform-confirmed');sm.go('advancing','platform-confirmed');goAdvance(token);

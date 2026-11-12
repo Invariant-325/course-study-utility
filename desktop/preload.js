@@ -19,6 +19,7 @@ const isAppUi = (() => {
 if (isAppUi) {
   contextBridge.exposeInMainWorld('__cxApp', {
     windowControl: (action) => ipcRenderer.invoke('window:control', action),
+    onCourseChanged:callback=>{const listener=()=>callback();ipcRenderer.on('course:changed',listener);return()=>ipcRenderer.removeListener('course:changed',listener)},
     coursesList: () => ipcRenderer.invoke('courses:list'),
     coursesRefresh: () => ipcRenderer.invoke('courses:refresh'),
     courseOpen: id => ipcRenderer.invoke('courses:open', id),
@@ -153,6 +154,7 @@ if (isAppUi) {
       let origin;
       try { origin = new URL(event.origin); } catch { return; }
       if (!/^https?:$/.test(origin.protocol) || !/(^|\.)(chaoxing|xuexitong)\.com$/i.test(origin.hostname)) return;
+      if(event.source&&data?.channel==='cx-course-progress'){ipcRenderer.send('course:domChanged');return;}
       if (event.source === window || !event.source || !data || data.channel !== 'cx-host-request') return;
       if (typeof data.id !== 'string' || data.id.length > 100 || !Array.isArray(data.args)) return;
       const channels = { askVision: 'vision:ask', visionStatus: 'vision:status', xhr: 'net:xhr' };
@@ -170,4 +172,11 @@ if (isAppUi) {
       }
     });
   }
+}
+
+if(!isAppUi&&/(^|\.)(chaoxing|xuexitong)\.com$/i.test(location.hostname)){
+ let progressTimer;
+ const notify=()=>{clearTimeout(progressTimer);progressTimer=setTimeout(()=>ipcRenderer.send('course:domChanged'),100)};
+ const observe=()=>{if(!document.body)return;const catalog='#coursetree,.posCatalog_level,.chapter_item,.chapter-item,.catalog_item,.catalog-item';new MutationObserver(changes=>{if(changes.some(change=>{const element=change.target.nodeType===1?change.target:change.target.parentElement;return element?.closest(catalog)||[...change.addedNodes].some(n=>n.nodeType===1&&(n.matches?.(catalog)||n.querySelector?.(catalog)));}))notify();}).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','title','aria-label','data-pending','data-unfinished']});notify();};
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',observe,{once:true});else observe();
 }

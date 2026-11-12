@@ -1,5 +1,11 @@
 // Serialized into the page world; no Node access in course frames.
 function installFrameBridge(topOrigin, values) {
+  if(window!==window.top&&!window.__cxCatalogObserver){
+    window.__cxCatalogObserver=true;let timer;
+    const notify=()=>{clearTimeout(timer);timer=setTimeout(()=>window.top.postMessage({channel:'cx-course-progress'},topOrigin),100)};
+    const observe=()=>{if(!document.body)return;const root='#coursetree,.posCatalog_level,.chapter_item,.chapter-item,.catalog_item,.catalog-item';new MutationObserver(changes=>{if(changes.some(change=>{const e=change.target.nodeType===1?change.target:change.target.parentElement;return e?.closest(root)||[...change.addedNodes].some(n=>n.nodeType===1&&(n.matches?.(root)||n.querySelector?.(root)));}))notify();}).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','title','aria-label','data-pending','data-unfinished']});notify();};
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',observe,{once:true});else observe();
+  }
   if (window.__cxHost || window === window.top) return;
   let sequence = 0;
   const pending = new Map();
