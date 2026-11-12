@@ -224,13 +224,14 @@ const ChapterQuizRunner = (function () {
           };
           continue;
         }
-        if (typeof QuizImage === 'undefined') {
+        if (!window.__cxHost&&typeof QuizImage === 'undefined') {
           S.suggestions[q.key] = { status: 'skip', error: '图像模块未加载' };
           continue;
         }
 
-        if (document.fonts && document.fonts.ready) await document.fonts.ready;
-        const image = QuizImage.render(q);
+        if (quizDoc.fonts && quizDoc.fonts.ready) await quizDoc.fonts.ready;
+        const image=window.__cxHost?await window.__cxHost.captureQuestion?.({questionId:q.key})||{ok:false,reason:'桌面截图接口未就绪'}:QuizImage.render(q);
+        if(token!==S.token)return false;
         if (!image.ok) {
           S.suggestions[q.key] = {
             status: 'skip',
@@ -481,9 +482,11 @@ const ChapterQuizRunner = (function () {
       return s && s.status === 'ok' && s.letters && s.letters.length;
     });
     if (!answered.length) {
-      return { ok: false, phase: 'analyze', error: 'no-answer' };
+      const failures=Object.values(S.suggestions).map(s=>s?.error).filter(Boolean);
+      return {ok:false,phase:'analyze',error:failures.length?[...new Set(failures)].slice(0,3).join('；'):'未获得可用答案'};
     }
 
+    if(answered.length!==S.quiz.questions.length)return {ok:false,phase:'analyze',error:'还有题目未能识别，已停止自动提交',answered:answered.length,total:S.quiz.questions.length};
     fillAll({ force: opts.force === true });
 
     const needFill = answered.length;

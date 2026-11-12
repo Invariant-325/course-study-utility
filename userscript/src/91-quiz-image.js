@@ -26,9 +26,7 @@ const QuizImage = (function () {
   const ENCRYPTED_FONT = '"font-cxsecret", "Microsoft YaHei", sans-serif';
   const PLAIN_FONT = '"Microsoft YaHei", "PingFang SC", sans-serif';
 
-  function fontFor(encrypted) {
-    return '400 ' + FONT_SIZE + 'px ' + (encrypted ? ENCRYPTED_FONT : PLAIN_FONT);
-  }
+  function fontFor(encrypted,element){let family=encrypted?ENCRYPTED_FONT:PLAIN_FONT;try{const target=element?.querySelector?.('.font-cxsecret')||element;const actual=target?.ownerDocument?.defaultView?.getComputedStyle(target).fontFamily;if(actual)family=actual;}catch{}return '400 '+FONT_SIZE+'px '+family;}
 
   function wrapText(ctx, text, maxWidth) {
     const lines = [];
@@ -77,11 +75,14 @@ const QuizImage = (function () {
     const unsupported = detectUnsupported(question.el);
     const encrypted = !!question.encrypted;
 
-    const canvas = document.createElement('canvas');
+    const owner=question.el?.ownerDocument||document;
+    const stemNode=question.el?.querySelector('.fontLabel')||question.el;
+    const stemFont=fontFor(encrypted,stemNode);
+    const canvas = owner.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return { ok: false, reason: 'no-2d-context' };
 
-    ctx.font = fontFor(encrypted);
+    ctx.font = stemFont;
     const textWidth = WIDTH - PADDING * 2;
 
     const blocks = [];
@@ -89,15 +90,16 @@ const QuizImage = (function () {
     blocks.push({ kind: 'title', text: '第 ' + (question.num || '?') + ' 题 ' + (question.typeLabel || '') });
     // 题干
     for (const line of wrapText(ctx, question.stem, textWidth)) {
-      blocks.push({ kind: 'stem', text: line });
+      blocks.push({ kind: 'stem', text: line, font:stemFont });
     }
     blocks.push({ kind: 'gap', text: '' });
     // 选项
     for (const option of question.options) {
+      const optionFont=fontFor(encrypted,option.el?.querySelector('a.after')||option.el||stemNode);ctx.font=optionFont;
       const prefix = (option.letter || '?') + '  ';
       const wrapped = wrapText(ctx, prefix + option.text, textWidth);
       for (let i = 0; i < wrapped.length; i++) {
-        blocks.push({ kind: i === 0 ? 'option' : 'option-cont', text: wrapped[i] });
+        blocks.push({ kind: i === 0 ? 'option' : 'option-cont', text: wrapped[i],font:optionFont });
       }
     }
 
@@ -133,13 +135,13 @@ const QuizImage = (function () {
         continue;
       }
       if (block.kind === 'title') {
-        ctx.font = '600 ' + (FONT_SIZE - 2) + 'px ' + (encrypted ? ENCRYPTED_FONT : PLAIN_FONT);
+        ctx.font = '600 ' + (FONT_SIZE - 2) + 'px ' + PLAIN_FONT;
         ctx.fillStyle = '#444444';
       } else if (block.kind === 'stem') {
-        ctx.font = fontFor(encrypted);
+        ctx.font = block.font||stemFont;
         ctx.fillStyle = '#111111';
       } else {
-        ctx.font = fontFor(encrypted);
+        ctx.font = block.font||stemFont;
         ctx.fillStyle = '#1f2430';
         if (block.kind === 'option') y += OPTION_GAP;
       }

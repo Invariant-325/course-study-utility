@@ -1,16 +1,17 @@
 const {app,BrowserWindow,webContents,session,dialog}=require('electron');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const pause=ms=>new Promise(r=>setTimeout(r,ms));dialog.showErrorBox=(title,message)=>console.error(title,message);
+process.env.VISION_API_KEY='test-only-placeholder-credential';const previousFetch=global.fetch;global.fetch=(url,options)=>String(url).includes('api.deepseek.com/chat/completions')?Promise.resolve(new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({questionId:'q_001',type:'single',answers:['A'],status:'ok'})}}],usage:{}}),{headers:{'Content-Type':'application/json'}})):previousFetch(url,options);
 require('../desktop/main.js');
 app.whenReady().then(async()=>{try{
  const ses=session.fromPartition('persist:chaoxing');
  await ses.protocol.handle('https',req=>{
   const url=new URL(req.url);let html;
-  if(url.hostname==='quiz.chaoxing.com')html=`<script>window.__cxUserscriptLoaded=true;window.__cxChapterQuiz={detect:()=>({isQuizPage:true}),parse:()=>({count:1}),runner:{runAuto:async options=>({ok:true,phase:options.submit?'submitted':'filled',receivedSubmit:options.submit}),stop:()=>true}};</script>`;
+  if(url.hostname==='quiz.chaoxing.com')html=`<div class="TiMu" style="padding:24px;font:22px Arial"><h2>2 + 2 = ?</h2><p>A. 4</p><p>B. 5</p></div><script>window.__cxUserscriptLoaded=true;window.__cxChapterQuiz={detect:()=>({isQuizPage:true}),parse:()=>({count:1,questions:[{key:'fixture-capture-key',el:document.querySelector('.TiMu')}]}),runner:{runAuto:async options=>({ok:true,phase:options.submit?'submitted':'filled',receivedSubmit:options.submit}),stop:()=>true}};</script>`;
   else if(url.pathname==='/base')html='<span id="personalName">Fixture User</span><ul id="courseList"><li><a href="/mycourse/stu?courseid=1&clazzid=9">Integration course</a></li></ul>';
   else if(url.pathname==='/mycourse/stu')html='<iframe src="/mycourse/catalog"></iframe>';
   else if(url.pathname==='/mycourse/catalog')html='<p>已完成任务点：19/59</p><div class="chapter_item"><h3 onclick="parent.location=\'/mycourse/studentstudy\'" title="1.1 章节标题">1.1 章节标题</h3><span class="catalog_points">2</span></div>';
-  else html=`<script>window.__cxUserscriptLoaded=true;window.starts=0;window.__cxNaturalWatchApp={tree:{catalogEntries:()=>({items:[]}),catalogProgress:()=>({items:[]}),enumerate:()=>[],readCatalogSummary:()=>null},runner:{snapshot:()=>({state:starts?'playing':'idle'}),start:()=>{starts++}}}</script>`;
+  else html=`<div class="TiMu" style="padding:24px;font:22px Arial"><h2>2 + 2 = ?</h2><p>A. 4</p><p>B. 5</p></div><script>window.__cxUserscriptLoaded=true;window.starts=0;window.__cxNaturalWatchApp={tree:{catalogEntries:()=>({items:[]}),catalogProgress:()=>({items:[]}),enumerate:()=>[],readCatalogSummary:()=>null},runner:{snapshot:()=>({state:starts?'playing':'idle'}),start:()=>{starts++}}}</script>`;
   return new Response(html,{headers:{'Content-Type':'text/html;charset=utf-8'}});
  });
  await ses.cookies.set({url:'https://i.chaoxing.com',name:'_uid',value:'fixture-user',secure:true,expirationDate:Date.now()/1000+3600});
@@ -51,6 +52,9 @@ app.whenReady().then(async()=>{try{
  const quizRun=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"run",chapter:"2.2 当前章节",submit:true})')+')');assert.equal(quizRun.result.phase,'filled');assert.equal(quizRun.result.receivedSubmit,false);
  const wrong=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"run",chapter:"另一章节",submit:true})')+')');assert.equal(wrong.result.ok,false);
  console.log('PASS real main/preload cross-origin quiz bridge, selected-chapter guard and global submit-off respected');
+ const screenshot=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.captureQuestion({questionId:"fixture-capture-key"})')+')');assert(screenshot.result.ok,screenshot.result.reason);assert.equal(screenshot.result.source,'browser-screenshot');assert(screenshot.result.dataUrl.startsWith('data:image/png;base64,'));
+ const analyzed=await ui('window.__cxApp.askVision('+JSON.stringify({questionId:'local-bound-opaque-id',imageBase64:screenshot.result.dataUrl,allowedLetters:['A','B']})+')');assert(analyzed.ok);assert.equal(analyzed.questionId,'local-bound-opaque-id');assert.deepEqual(analyzed.answers,['A']);console.log('PASS native screenshot through actual preload IPC; model q_001 cannot override local question identity');
+
  await pause(300);const store=JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'store.json')));assert(store.courseProgressByAccount);
  await ui('setTimeout(()=>window.__cxApp.windowControl("quit"),100);true');
  }catch(e){console.error(e.stack);app.exit(1)}});

@@ -30,6 +30,7 @@ function installFrameBridge(topOrigin, values) {
     kvGet: (key, fallback) => Object.prototype.hasOwnProperty.call(values, key) ? values[key] : fallback,
     kvSet: (key, value) => { values[key] = value; request('kvSet', [key, value]).catch(() => {}); return true; },
     xhr: options => request('xhr', [options]),
+    captureQuestion: requestOptions => request('captureQuestion',[requestOptions]),
     chapterQuiz: requestOptions => request('chapterQuiz',[requestOptions]),
     askVision: payload => request('askVision', [payload]),
     visionStatus: () => request('visionStatus', []),

@@ -21,3 +21,4 @@ import './study-policy.test.mjs';
 
 import './catalog-live-progress.test.mjs';
 import './quiz-tab-transition.test.mjs';
+import './native-question-vision.test.mjs';

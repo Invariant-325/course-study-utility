@@ -72,7 +72,7 @@ let isQuitting = false;
 let win = null;
 let browser = null;
 let coursePortal = null;
-let playbackController=null,manualQuiz=null,chapterQuizBridge=null;
+let playbackController=null,manualQuiz=null,chapterQuizBridge=null,questionCapture=null;
 const { createCoursePortal } = require('./course-portal.cjs');
 const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
@@ -228,6 +228,7 @@ async function createWindow() {
   // Use the portal's own course-menu handler after normal platform login.
   coursePortal = createCoursePortal({ browser,getStrategy:()=>{try{return JSON.parse(store['cxNaturalWatch:cfg.studyStrategy']||'"auto"')}catch{return 'auto'}},onActivity:active=>sleepGuard.set('runner',active) });
   playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal});
+  questionCapture=require('./question-capture.cjs').createQuestionCapture({browser});
   chapterQuizBridge=require('./chapter-quiz-bridge.cjs').createChapterQuizBridge({browser,getPreferences:()=>({quizGateEnabled:store['cxNaturalWatch:cfg.quizGateEnabled']==='true',quizAutoSubmit:store['cxNaturalWatch:cfg.quizAutoSubmit']==='true'})});
   manualQuiz=require('./manual-quiz.cjs').createManualQuiz({browser,portal:coursePortal,playback:playbackController});
   coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
@@ -376,7 +377,7 @@ const SYSTEM_TASK = [
   '8. 仅允许使用图片查看或只读文件工具读取指定题目截图；不执行命令，不操作网页，不修改任何文件。',
   '',
   '统一返回格式：',
-  '{"questionId":"q_001","type":"single","answers":["B"],"status":"ok"}',
+  '{"type":"single","answers":["B"],"status":"ok"}',
 ].join('\n');
 
 function extractJson(text) {
@@ -504,7 +505,7 @@ async function askVision(payload) {
           {
             role: 'user',
             content: [
-              { type: 'text', text: '题目 ID：' + questionId + '。请阅读图片中的题目并作答。' },
+              { type: 'text', text:'请直接阅读网页截图中的题目并作答。允许的选项标识：'+allowedLetters.join('、')+'。只返回 type、answers、status 三个 JSON 字段。' },
               { type: 'image_url', image_url: { url: 'data:image/png;base64,' + buf.toString('base64') } },
             ],
           },
@@ -554,7 +555,8 @@ async function askVision(payload) {
   }
 
   const errors = [];
-  if (String(parsed.questionId || '') !== questionId) errors.push('QUESTION_ID_MISMATCH');
+  // The request closure owns question identity. Model-generated identifiers never route answers.
+  // Browser-side validation still requires this original host-bound ID to match. 
   let answers = Array.isArray(parsed.answers) ? parsed.answers.map((x) => String(x).toUpperCase()) : [];
   answers = answers.filter((a) => /^[A-H]$/.test(a));
   const allowed = new Set(allowedLetters);
@@ -582,6 +584,7 @@ async function askVision(payload) {
 function registerIpc() {
   ipcMain.handle('playback:status',async()=>{const value=playbackController?await playbackController.status():{ok:false};sleepGuard.set('playback',['playing','preparing','working'].includes(value.mode));return value;});
   ipcMain.handle('playback:command',async(_e,action)=>{if(action==='pause'||action==='stop')await manualQuiz?.cancel();else if(manualQuiz?.status().busy)return {ok:false,error:'正在做本章习题，暂停后再开始学习'};return playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'};});
+  ipcMain.handle('quiz:capture',async(event,request)=>{if(event.sender!==browser?.view?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,reason:'不支持的截图来源'};return questionCapture?questionCapture.capture(request):{ok:false,reason:'截图接口未就绪'};});
   ipcMain.handle('quiz:chapter',async(event,request)=>{if(event.sender!==browser?.view?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,error:'不支持的来源'};return chapterQuizBridge?chapterQuizBridge.invoke(request):{ok:false};});
   ipcMain.handle('quiz:manual',async(_e,chapter)=>{if(!manualQuiz)return {ok:false,error:'先打开课程'};if(manualQuiz.status().busy)return {ok:false,error:'正在做题，请等待完成'};sleepGuard.set('manual-quiz',true);try{return await manualQuiz.start(chapter)}finally{sleepGuard.set('manual-quiz',false)}});
   ipcMain.handle('quiz:manualStatus',()=>manualQuiz?.status()||{busy:false});
@@ -649,7 +652,7 @@ function registerIpc() {
   ipcMain.handle('vision:ask', async (event, payload) => {
     try {
       const r = await askVision(payload);
-      bootLog('[vision] ' + (payload && payload.questionId) + ' ok=' + r.ok + ' ' + (r.elapsedMs || 0) + 'ms');
+      bootLog('[vision] ok='+r.ok+' status='+(r.status||'')+' error='+(r.error||(r.errors||[]).join(','))+' '+(r.elapsedMs||0)+'ms');
       // 记录一次模型调用（无论成功失败，都算一次请求）
       try {
         bumpStats({

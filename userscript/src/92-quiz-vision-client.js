@@ -114,6 +114,8 @@ const QuizVision = (function () {
         };
       }
 
+      if(data?.ok===false){const reason=data.error||(data.errors||[]).join('；')||('视觉识别未取得答案（'+(data.status||'未知原因')+'）');STATS.failures++;STATS.lastError=reason;return {ok:false,error:reason,answers:[],status:data.status||'unreadable',elapsedMs:data.elapsedMs||STATS.lastElapsedMs};}
+
       // 客户端二次校验：题目 ID 必须回显一致，选项必须在允许集合内
       const errors = [];
       if (String(data.questionId || '') !== String(questionId)) {

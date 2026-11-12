@@ -27,7 +27,7 @@ await ev('document.getElementById("defaultWebMuted").checked=false');
 require('node:fs').writeFileSync(require('node:path').join(__dirname,'settings-024.png'),(await wc.capturePage()).toPNG());console.log('PASS avatar-only settings, no sidebar About, and switch thumb remains inside track in both states');
 await click('#defaultWebMuted');assert(calls.some(x=>x.type==='prefs'&&x.value?.defaultWebMuted===true));
 await click('#checkUpdateSettings');assert(calls.some(x=>x.type==='update'));assert.equal(await ev('document.getElementById("openUpdate").hidden'),false);
-await click('#tbApp');await click('#appMenu [data-mi=about]');assert((await ev('document.getElementById("aboutVersion").textContent')).includes('0.2.6'));
+await click('#tbApp');await click('#appMenu [data-mi=about]');assert((await ev('document.getElementById("aboutVersion").textContent')).includes('0.2.7'));
 await click('[data-link="https://github.com/Invariant-325"]');assert(calls.some(x=>x.type==='external'));
 await click('[data-nav=dashboard]');
 const grip=await ev('(()=>{const r=document.getElementById("sidebarResize").getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+80}})()');

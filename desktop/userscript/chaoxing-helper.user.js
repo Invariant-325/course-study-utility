@@ -4903,13 +4903,14 @@ const ChapterQuizRunner = (function () {
           };
           continue;
         }
-        if (typeof QuizImage === 'undefined') {
+        if (!window.__cxHost&&typeof QuizImage === 'undefined') {
           S.suggestions[q.key] = { status: 'skip', error: '图像模块未加载' };
           continue;
         }
 
-        if (document.fonts && document.fonts.ready) await document.fonts.ready;
-        const image = QuizImage.render(q);
+        if (quizDoc.fonts && quizDoc.fonts.ready) await quizDoc.fonts.ready;
+        const image=window.__cxHost?await window.__cxHost.captureQuestion?.({questionId:q.key})||{ok:false,reason:'桌面截图接口未就绪'}:QuizImage.render(q);
+        if(token!==S.token)return false;
         if (!image.ok) {
           S.suggestions[q.key] = {
             status: 'skip',
@@ -5160,9 +5161,11 @@ const ChapterQuizRunner = (function () {
       return s && s.status === 'ok' && s.letters && s.letters.length;
     });
     if (!answered.length) {
-      return { ok: false, phase: 'analyze', error: 'no-answer' };
+      const failures=Object.values(S.suggestions).map(s=>s?.error).filter(Boolean);
+      return {ok:false,phase:'analyze',error:failures.length?[...new Set(failures)].slice(0,3).join('；'):'未获得可用答案'};
     }
 
+    if(answered.length!==S.quiz.questions.length)return {ok:false,phase:'analyze',error:'还有题目未能识别，已停止自动提交',answered:answered.length,total:S.quiz.questions.length};
     fillAll({ force: opts.force === true });
 
     const needFill = answered.length;
@@ -6180,9 +6183,7 @@ const QuizImage = (function () {
   const ENCRYPTED_FONT = '"font-cxsecret", "Microsoft YaHei", sans-serif';
   const PLAIN_FONT = '"Microsoft YaHei", "PingFang SC", sans-serif';
 
-  function fontFor(encrypted) {
-    return '400 ' + FONT_SIZE + 'px ' + (encrypted ? ENCRYPTED_FONT : PLAIN_FONT);
-  }
+  function fontFor(encrypted,element){let family=encrypted?ENCRYPTED_FONT:PLAIN_FONT;try{const target=element?.querySelector?.('.font-cxsecret')||element;const actual=target?.ownerDocument?.defaultView?.getComputedStyle(target).fontFamily;if(actual)family=actual;}catch{}return '400 '+FONT_SIZE+'px '+family;}
 
   function wrapText(ctx, text, maxWidth) {
     const lines = [];
@@ -6231,11 +6232,14 @@ const QuizImage = (function () {
     const unsupported = detectUnsupported(question.el);
     const encrypted = !!question.encrypted;
 
-    const canvas = document.createElement('canvas');
+    const owner=question.el?.ownerDocument||document;
+    const stemNode=question.el?.querySelector('.fontLabel')||question.el;
+    const stemFont=fontFor(encrypted,stemNode);
+    const canvas = owner.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return { ok: false, reason: 'no-2d-context' };
 
-    ctx.font = fontFor(encrypted);
+    ctx.font = stemFont;
     const textWidth = WIDTH - PADDING * 2;
 
     const blocks = [];
@@ -6243,15 +6247,16 @@ const QuizImage = (function () {
     blocks.push({ kind: 'title', text: '第 ' + (question.num || '?') + ' 题 ' + (question.typeLabel || '') });
     // 题干
     for (const line of wrapText(ctx, question.stem, textWidth)) {
-      blocks.push({ kind: 'stem', text: line });
+      blocks.push({ kind: 'stem', text: line, font:stemFont });
     }
     blocks.push({ kind: 'gap', text: '' });
     // 选项
     for (const option of question.options) {
+      const optionFont=fontFor(encrypted,option.el?.querySelector('a.after')||option.el||stemNode);ctx.font=optionFont;
       const prefix = (option.letter || '?') + '  ';
       const wrapped = wrapText(ctx, prefix + option.text, textWidth);
       for (let i = 0; i < wrapped.length; i++) {
-        blocks.push({ kind: i === 0 ? 'option' : 'option-cont', text: wrapped[i] });
+        blocks.push({ kind: i === 0 ? 'option' : 'option-cont', text: wrapped[i],font:optionFont });
       }
     }
 
@@ -6287,13 +6292,13 @@ const QuizImage = (function () {
         continue;
       }
       if (block.kind === 'title') {
-        ctx.font = '600 ' + (FONT_SIZE - 2) + 'px ' + (encrypted ? ENCRYPTED_FONT : PLAIN_FONT);
+        ctx.font = '600 ' + (FONT_SIZE - 2) + 'px ' + PLAIN_FONT;
         ctx.fillStyle = '#444444';
       } else if (block.kind === 'stem') {
-        ctx.font = fontFor(encrypted);
+        ctx.font = block.font||stemFont;
         ctx.fillStyle = '#111111';
       } else {
-        ctx.font = fontFor(encrypted);
+        ctx.font = block.font||stemFont;
         ctx.fillStyle = '#1f2430';
         if (block.kind === 'option') y += OPTION_GAP;
       }
@@ -6468,6 +6473,8 @@ const QuizVision = (function () {
           httpStatus: res.status,
         };
       }
+
+      if(data?.ok===false){const reason=data.error||(data.errors||[]).join('；')||('视觉识别未取得答案（'+(data.status||'未知原因')+'）');STATS.failures++;STATS.lastError=reason;return {ok:false,error:reason,answers:[],status:data.status||'unreadable',elapsedMs:data.elapsedMs||STATS.lastElapsedMs};}
 
       // 客户端二次校验：题目 ID 必须回显一致，选项必须在允许集合内
       const errors = [];

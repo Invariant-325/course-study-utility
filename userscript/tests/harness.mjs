@@ -22,7 +22,7 @@ const EXPORT_NAMES = [
   'PauseClassifier',
   'QuizModel',
   'Llm',
-  'QuizRunner',
+  'QuizRunner','QuizImage','QuizVision',
   'ChapterQuizAdapter',
   'ChapterQuizRunner',
   'StateMachine',
