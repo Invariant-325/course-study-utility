@@ -1,4 +1,4 @@
-/* All emphasis follows the selected theme, including dark mode. */
+/* Interactive emphasis follows the theme; chapter completion uses semantic colors. */
 .btn.outlined,.btn.text,.tmenu,.pagehead h1,.cc-name,.sideitem[aria-selected=true]{color:var(--md-sys-color-primary)}
 .btn.outlined,.preference-card,.settings-logs{border-color:color-mix(in oklab,var(--md-sys-color-primary) 32%,transparent)}
 .course-card{position:relative;border:2px solid transparent!important;transition:border-color .2s,background .2s,box-shadow .2s}
@@ -11,9 +11,8 @@
 
 .lnk[data-selected=true]{background:var(--md-sys-color-primaryContainer);color:var(--md-sys-color-onPrimaryContainer);box-shadow:inset 3px 0 var(--md-sys-color-primary)}
 .chapter[data-state=done]{background:color-mix(in oklab,#2e9f63 13%,var(--md-sys-color-surface));color:light-dark(#176c3d,#8addaa)}
-.chapter[data-state=video]{background:color-mix(in oklab,var(--md-sys-color-primary) 14%,var(--md-sys-color-surface));color:var(--md-sys-color-primary)}
-.chapter[data-state=quiz]{background:color-mix(in oklab,var(--md-sys-color-tertiary) 15%,var(--md-sys-color-surface));color:var(--md-sys-color-tertiary)}
-.chapter[data-state=todo]{background:color-mix(in oklab,#dd922a 14%,var(--md-sys-color-surface));color:light-dark(#8b5000,#efb85e)}
+.chapter[data-state=video],.chapter[data-state=quiz]{background:color-mix(in oklab,#d59b19 16%,var(--md-sys-color-surface));color:light-dark(#805900,#f1ca64)}
+.chapter[data-state=todo]{background:color-mix(in oklab,#d63d3d 12%,var(--md-sys-color-surface));color:light-dark(#ad2424,#ffaaaa)}
 .chapter[data-state=unknown]{color:var(--md-sys-color-onSurfaceVariant)}
 .chapter[data-state=video] .ch-dot,.chapter[data-state=quiz] .ch-dot,.chapter[data-state=todo] .ch-dot{background:currentColor}
 
@@ -40,3 +39,7 @@
 #wkPause{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;min-width:82px;padding:0 12px;white-space:nowrap;font-size:13px}
 #studyStrategy{display:block;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--md-sys-color-outlineVariant);border-radius:12px;background:var(--md-sys-color-surfaceContainer);color:var(--md-sys-color-onSurface);font:inherit}
 #advanceOnPlatformComplete{accent-color:var(--md-sys-color-primary)}
+
+.study-shortcut{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--md-sys-color-onSurfaceVariant)}.study-shortcut select{font:inherit;color:var(--md-sys-color-primary);background:var(--md-sys-color-surfaceContainer);border:1px solid var(--md-sys-color-outlineVariant);border-radius:18px;padding:6px 10px;max-width:150px}
+
+.wktabs{flex-wrap:wrap;height:auto;min-height:48px;gap:8px}.study-shortcut select#manualQuizChapter{max-width:240px}.chapter .ch-count{white-space:nowrap}.switch:has(input:disabled){cursor:default}.switch input:disabled+.track{opacity:.5}

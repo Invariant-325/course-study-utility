@@ -72,7 +72,7 @@ let isQuitting = false;
 let win = null;
 let browser = null;
 let coursePortal = null;
-let playbackController=null;
+let playbackController=null,manualQuiz=null;
 const { createCoursePortal } = require('./course-portal.cjs');
 const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
@@ -226,6 +226,7 @@ async function createWindow() {
   // Use the portal's own course-menu handler after normal platform login.
   coursePortal = createCoursePortal({ browser,getStrategy:()=>{try{return JSON.parse(store['cxNaturalWatch:cfg.studyStrategy']||'"auto"')}catch{return 'auto'}},onActivity:active=>sleepGuard.set('runner',active) });
   playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal});
+  manualQuiz=require('./manual-quiz.cjs').createManualQuiz({browser,portal:coursePortal,playback:playbackController});
   coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
   win.on('close', event => {
     // 收起窗口 = 收进托盘（不退出），这样刷课能继续
@@ -577,7 +578,9 @@ async function askVision(payload) {
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
   ipcMain.handle('playback:status',async()=>{const value=playbackController?await playbackController.status():{ok:false};sleepGuard.set('playback',['playing','preparing','working'].includes(value.mode));return value;});
-  ipcMain.handle('playback:command',(_e,action)=>playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'});
+  ipcMain.handle('playback:command',async(_e,action)=>{if(action==='pause'||action==='stop')await manualQuiz?.cancel();else if(manualQuiz?.status().busy)return {ok:false,error:'正在做本章习题，暂停后再开始学习'};return playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'};});
+  ipcMain.handle('quiz:manual',async(_e,chapter)=>{if(!manualQuiz)return {ok:false,error:'先打开课程'};if(manualQuiz.status().busy)return {ok:false,error:'正在做题，请等待完成'};sleepGuard.set('manual-quiz',true);try{return await manualQuiz.start(chapter)}finally{sleepGuard.set('manual-quiz',false)}});
+  ipcMain.handle('quiz:manualStatus',()=>manualQuiz?.status()||{busy:false});
   ipcMain.handle('learning:preferences',async (_event,patch)=>{
     const keys=['quizGateEnabled','quizAutoSubmit','studyStrategy','advanceOnPlatformComplete'];
     const modes=['auto','sequential','quiz-first','quiz-only','video-only'];
@@ -597,9 +600,9 @@ function registerIpc() {
   ipcMain.handle('app:updates',async()=>{try{const res=await fetch('https://api.github.com/repos/Invariant-325/course-study-utility/releases/latest',{headers:{Accept:'application/vnd.github+json','User-Agent':'CourseStudyUtility'},signal:AbortSignal.timeout(12000)});if(!res.ok)return{ok:false,error:res.status===403?'请求受限，稍后重试':'更新服务返回 '+res.status};const d=await res.json();if(d.prerelease||d.draft)return{ok:false,error:'未找到正式版本'};const clean=v=>String(v).replace(/^v/,'').split('-')[0].split('.').map(Number);const a=clean(d.tag_name),b=clean(app.getVersion());let cmp=0;for(let i=0;i<3;i++){if(a[i]!==b[i]){cmp=a[i]>b[i]?1:-1;break}}if(!a.every(Number.isFinite))return{ok:false,error:'版本信息无效'};return{ok:true,current:app.getVersion(),latest:d.tag_name,available:cmp>0||(cmp===0&&app.getVersion().includes('-')),url:d.html_url}}catch{return{ok:false,error:'无法连接 GitHub，检查网络后重试'}}});
   const progressNamespace=async()=>{const cookies=await browser?.view?.webContents.session.cookies.get({name:'_uid'});const id=cookies?.[0]?.value;return id?require('node:crypto').createHash('sha256').update(id).digest('hex'):null};
   ipcMain.handle('courses:list', async () => {const result=coursePortal?await coursePortal.list():{ok:true,courses:[],state:{phase:'loading'}};const key=await progressNamespace();const cache=key?store.courseProgressByAccount?.[key]||{}:{};result.courses=result.courses.map(c=>({...c,progress:cache[c.id]||null}));return result;});
-  ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
-  ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
-  ipcMain.handle('course:openChapter', (_e,chapter) => coursePortal ? coursePortal.openChapter(chapter) : {ok:false});
+  ipcMain.handle('courses:refresh', async() => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.refresh():{ok:false};});
+  ipcMain.handle('courses:open', async(_e,id) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.open(id):{ok:false};});
+  ipcMain.handle('course:openChapter', async(_e,chapter) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.openChapter(chapter):{ok:false};});
   ipcMain.handle('course:refreshProgress',()=>coursePortal?coursePortal.refreshProgress():{ok:false});
 
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
@@ -888,7 +891,7 @@ function registerIpc() {
           var label=el.querySelector('.chapter-title,.catalog_name,.catalog_title,.posCatalog_name');
           return { title: cleanChapter(label ? label.textContent : txt), pending: m ? Number(m[1]) : a.tree.readCatalogPending(el) };
         });
-        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor, jobs:a.tree.enumerate().map(j=>({type:j.type,state:j.state})) };
+        return { ok: true, items: items, progress: prog, summary: sum, cursor: cursor,tabs:a.tree.readTaskTabs?.(), jobs:a.tree.enumerate().map(j=>({type:j.type,state:j.state})) };
       } catch (e) {
         return { ok: false, reason: String((e && e.message) || e) };
       }
@@ -911,7 +914,7 @@ function registerIpc() {
         for(const item of data.items||[]){const title=clean(item.title);const old=saved.chapters[title]||{};
           if(item.pending===0)Object.assign(old,{complete:true});
           else if(item.pending>0)old.complete=false;
-          if(active&&clean(active.text).startsWith(title.slice(0,Math.min(12,title.length))))Object.assign(old,{videoDone:finished('video'),quizDone:finished('work')});
+          if(active&&clean(active.text).startsWith(title.slice(0,Math.min(12,title.length))))Object.assign(old,{videoDone:finished('video'),quizDone:finished('work'),hasVideo:jobs.some(j=>j.type==='video')||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});
           saved.chapters[title]=old;Object.assign(item,old);
         }
         saved.updatedAt=Date.now();saveStore();

@@ -28,6 +28,7 @@ if (isAppUi) {
     preferences: patch => ipcRenderer.invoke('app:preferences',patch),
     learningPreferences: patch => ipcRenderer.invoke('learning:preferences',patch),
     playbackState: () => ipcRenderer.invoke('playback:status'),
+    manualQuiz: chapter => ipcRenderer.invoke('quiz:manual',chapter),manualQuizStatus:()=>ipcRenderer.invoke('quiz:manualStatus'),
     playbackCommand: action => ipcRenderer.invoke('playback:command',action),
     checkUpdates: () => ipcRenderer.invoke('app:updates'),
     openExternal: url => ipcRenderer.invoke('app:external',url),

@@ -13,3 +13,5 @@ openssl req -x509 -newkey rsa:2048 -nodes -keyout test-key.pem -out test-cert.pe
 证书、私钥、测试用户目录、日志不得随源码分发。此目录未包含测试私钥或真实账号信息。
 
 0.2.3：playback-test.cjs 检查统一控制器，controls-ui-test.cjs 与 controls-mock.cjs 检查原生鼠标和所有按钮标签同步。userscript/tests/study-policy.test.mjs 检查自动默认策略、进度刷新与提前结束证据，完整脚本回归通过 140 项。main-integration-test.cjs 增加学习偏好、提前结束选项与重载恢复检查。
+
+0.2.4：`node tests/desktop-024.test.cjs` 检查任务安排与单章做题调度；nested-playback-test.cjs 检查嵌套播放器恢复；ui-test.cjs 使用隔离账号和模拟数据检查原生鼠标操作、章节颜色、任务拆分及设置。生成的截图和用户目录不随源码分发。

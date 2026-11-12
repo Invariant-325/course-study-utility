@@ -30,6 +30,7 @@ app.whenReady().then(async()=>{try{
  assert.equal(await ui('document.getElementById("swAutoQuiz").checked'),true);assert.equal(await ui('document.getElementById("swAutoSubmit").checked'),true);assert.equal(await ui('document.getElementById("studyStrategy").value'),'quiz-first');
  assert.equal(await ui('document.getElementById("advanceOnPlatformComplete").checked'),false);
  console.log('PASS persisted quiz/submit switches and strategy restored after renderer reload');
+ assert.equal(await ui('document.getElementById("workspaceStrategy").value'),'quiz-first');await ui('document.getElementById("workspaceStrategy").value="video-only";document.getElementById("workspaceStrategy").dispatchEvent(new Event("change"));true');await pause(200);assert.equal((await ui('window.__cxApp.learningPreferences()')).studyStrategy,'video-only');assert.equal(await ui('document.getElementById("studyStrategy").value'),'video-only');console.log('PASS course strategy shortcut persists through actual main/preload IPC');
  const scheduled=await ui('window.__cxApp.nightSchedule(30000)');assert(scheduled.ok);assert((await ui('window.__cxApp.nightStatus()')).preventingSleep);assert(scheduled.executeAt-Date.now()>29000);assert((await ui('window.__cxApp.nightStatus()')).pending);
  await ui('window.__cxApp.nightCancel()');assert.equal((await ui('window.__cxApp.nightStatus()')).pending,false);
  console.log('PASS real night IPC schedules 30 seconds and cancels immediately; monitor command never executes');

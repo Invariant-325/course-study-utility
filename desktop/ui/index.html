@@ -57,7 +57,6 @@
 
   <!-- 应用菜单（顶栏「应用」下拉） -->
   <div id="appMenu" role="menu">
-    <button class="mi" data-mi="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.4a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>设置<span class="kbd">Ctrl + ,</span></button>
     <button class="mi" data-mi="tray"><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5"/><path d="M5 17.5a3.5 3.5 0 0 0 3.5 3.5h7a3.5 3.5 0 0 0 3.5-3.5"/></svg>收进托盘</button>
     <button class="mi" data-mi="check"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/></svg>检查更新</button>
     <div class="msep"></div>
@@ -88,17 +87,14 @@
         学习
         <span class="sbadge" id="navLearnBadge">0</span>
       </button>
-      <button class="sideitem" data-nav="settings" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.6 5 .7-3.6 3.6.9 5-4.5-2.4L7.5 17l.9-5L4.8 8.3l5-.7z"/></svg> 设置
-      </button>
-      <button class="sideitem" data-nav="about" aria-selected="false"><span>关于</span></button>
+
     </nav>
 
     <div class="sidegroup">
       <span class="gt">课程</span>
       <span class="gact">
         <button id="gSearch" title="搜索"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></button>
-        <button id="gRefresh" title="重新读取"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/></svg></button>
+        <button id="gRefresh" title="刷新课程"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/></svg></button>
       </span>
     </div>
 
@@ -156,7 +152,7 @@
           <div class="hact">
             <button class="btn outlined" id="btnScan">
               <svg viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/></svg>
-              重新读取
+              刷新课程
             </button>
           </div>
         </div>
@@ -178,7 +174,7 @@
         <div class="pagehead">
           <div class="htext">
             <h1 class="t-headline-large">尚未选择课程</h1>
-            <p class="t-body-medium t-on-surface-variant">选择课程后查看章节</p>
+            <p class="t-body-medium t-on-surface-variant">选择课程后，查看视频和习题</p>
           </div>
           <div class="hact">
             <div class="glass-bar">
@@ -191,10 +187,11 @@
         <div class="wktabs" id="wkTabs">
           <button class="wktab" data-wk="all" aria-selected="true">全部章节</button>
           <button class="wktab" data-wk="todo" aria-selected="false">待完成</button>
-          <button class="wktab" data-wk="manual" aria-selected="false">需人工</button>
-          <div class="wktab-fill"></div>
+
+          <div class="wktab-fill"></div><label class="study-shortcut">学习策略 <select id="workspaceStrategy"><option value="auto">自动</option><option value="sequential">按章完成</option><option value="quiz-first">先做习题</option><option value="quiz-only">只做习题</option><option value="video-only">只看视频</option></select></label>
+          <label class="study-shortcut">做题章节 <select id="manualQuizChapter" aria-label="选择要做题的章节"></select></label><button class="btn outlined" id="manualQuizStart" title="做完后自动提交本章习题，不改变常用设置">做题并提交</button>
           <button class="btn text" id="refreshProgress">刷新进度</button>
-          <span class="wktab-meta" id="wkMeta">章节尚未读取</span>
+          <span class="wktab-meta" id="wkMeta">还没有章节信息</span>
         </div>
 
         <div class="workspace">
@@ -220,22 +217,18 @@
             </div>
           </div>
 
-          <!-- 右：任务队列 + 异常 -->
+          <!-- 学习步骤与提醒 -->
           <div class="side-stack">
             <div class="card filled">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class="t-title-small" style="flex:1">任务队列</span>
-                <span class="chip tone-primary" style="height:26px">暂无任务</span>
+                <span class="t-title-small" style="flex:1">接下来怎么学</span>
+                <span class="chip tone-primary" style="height:26px" id="planCount">等待选课</span>
               </div>
               <div class="queue" id="queueList"></div>
-              <button class="btn text" id="btnQueueAdd" style="margin-top:8px;width:100%">
-                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                添加任务
-              </button>
             </div>
 
             <div class="card filled">
-              <div class="t-title-small" style="margin-bottom:8px">异常</div>
+              <div class="t-title-small" style="margin-bottom:8px">需要注意</div>
               <div id="issueBox"></div>
             </div>
           </div>
@@ -259,13 +252,13 @@
           <div class="sec-title">模型服务</div>
           <div class="card filled">
             <div class="field" style="margin-bottom:14px">
-              <label for="apiKey">API Key</label>
+              <label for="apiKey">模型密钥（API Key）</label>
               <input type="password" id="apiKey" placeholder="sk-··········" autocomplete="off" spellcheck="false" />
               <div class="hint" id="keyHint">尚未配置</div>
             </div>
             <div style="display:flex;gap:8px">
               <button class="btn filled" id="btnSaveKey">保存</button>
-              <button class="btn outlined" id="btnTestKey">测试连接</button>
+              <button class="btn outlined" id="btnTestKey">检查密钥</button>
               <button class="btn text" id="btnClearKey" style="margin-left:auto;color:var(--md-sys-color-error)">清除</button>
             </div>
           </div>
@@ -294,51 +287,12 @@
           </div>
         </div>
 
-        <div class="settings-section">
-          <div class="sec-title">学习偏好</div><label class="preference card filled"><span>平台确认完成后提前结束视频<small>平台已标记当前视频完成时进入本章后续任务，不要求播到结尾。不按固定百分比猜测完成。</small></span><input type="checkbox" id="advanceOnPlatformComplete"></label>
-          <div class="card filled" style="margin-bottom:12px"><label for="studyStrategy">学习策略</label><select id="studyStrategy"><option value="auto">自动：从第一章检查，本章全部完成后继续</option><option value="sequential">按章完成：视频后完成本章测验</option><option value="quiz-first">优先测验：先补测验，再看视频</option><option value="quiz-only">仅补测验：跳过视频</option><option value="video-only">仅看视频：不处理章节测验</option></select><p class="hint">测验策略仍遵循自动做题和自动提交开关；未知完成状态需核实后继续。</p></div>
-          <div class="card filled">
-            <div class="setting-row">
-              <div class="sr-main">
-                <div class="sr-title">自动做题</div>
-                <div class="sr-sub">本节视频播完后，先完成本章测验再进入下一节。</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="swAutoQuiz" />
-                <span class="track"><span class="knob"></span></span>
-              </label>
-            </div>
-            <hr class="divider" />
-            <div class="setting-row">
-              <div class="sr-main">
-                <div class="sr-title">自动提交</div>
-                <div class="sr-sub">填完直接提交。关闭时只填写，等你核对后手动提交。</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="swAutoSubmit" />
-                <span class="track"><span class="knob"></span></span>
-              </label>
-            </div>
-            <hr class="divider" />
-            <div class="setting-row">
-              <div class="sr-main">
-                <div class="sr-title">遇异常时通知</div>
-                <div class="sr-sub">任务需要人工处理时发送通知。</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="swNotify" checked />
-                <span class="track"><span class="knob"></span></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-    <div class="card filled preference-card"><h2>声音与更新</h2><label class="preference"><span>课程网页默认静音<small>仅控制 App 内网页音频，不改系统音量</small></span><input type="checkbox" id="defaultWebMuted"></label><label class="preference"><span>启动后主动检查更新<small>仅查询 GitHub 最新正式版，不自动安装</small></span><input type="checkbox" id="autoCheckUpdates"></label><button class="btn outlined" id="checkUpdateSettings">检查更新</button><p id="updateResult" role="status"></p><button class="btn filled" id="openUpdate" hidden>查看新版本</button></div><details class="card settings-logs"><summary>运行日志</summary>
+        <div class="settings-section"><div class="sec-title">学习偏好</div><div class="card filled"><div class="field"><label for="studyStrategy">学习方式</label><select id="studyStrategy"><option value="auto">自动（推荐）：从前往后，学完本章再继续</option><option value="sequential">按章学习：先视频，后习题</option><option value="quiz-first">先补习题，再看视频</option><option value="quiz-only">只做习题</option><option value="video-only">只看视频</option></select><div class="hint">是否自动做题和提交，由下方开关决定。</div></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">视频任务完成就停止播放</div><div class="sr-sub">课程网站显示视频已完成后，继续本章后续内容。</div></div><label class="switch"><input type="checkbox" id="advanceOnPlatformComplete" ><span class="track"><span class="knob"></span></span></label></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">自动做本章习题</div><div class="sr-sub">按学习策略自动做习题，提交方式由下方开关决定。</div></div><label class="switch"><input type="checkbox" id="swAutoQuiz" ><span class="track"><span class="knob"></span></span></label></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">自动提交习题</div><div class="sr-sub">开启后做完直接提交；关闭则等你检查后手动提交。</div></div><label class="switch"><input type="checkbox" id="swAutoSubmit" ><span class="track"><span class="knob"></span></span></label></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">需要处理时通知我</div><div class="sr-sub">学习中断或需要检查时，在电脑上提醒。</div></div><label class="switch"><input type="checkbox" id="swNotify" checked><span class="track"><span class="knob"></span></span></label></div></div></div><div class="settings-section"><div class="card filled"><div class="setting-row"><div class="sr-main"><div class="sr-title">课程默认静音</div><div class="sr-sub">只让课程静音，不影响电脑其他声音。</div></div><label class="switch"><input type="checkbox" id="defaultWebMuted" ><span class="track"><span class="knob"></span></span></label></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">启动时检查新版本</div><div class="sr-sub">打开软件时检查更新，不会自动安装。</div></div><label class="switch"><input type="checkbox" id="autoCheckUpdates" ><span class="track"><span class="knob"></span></span></label></div><hr class="divider"><div class="setting-row"><div class="sr-main"><div class="sr-title">应用更新</div><p id="updateResult" class="sr-sub" role="status"></p></div><button class="btn outlined" id="checkUpdateSettings">检查更新</button><button class="btn filled" id="openUpdate" hidden>查看新版本</button></div></div></div><details class="card settings-logs"><summary>运行日志</summary>
       <div class="page-inner">
         <div class="pagehead">
           <div class="htext">
             <h1 class="t-headline-large">运行日志</h1>
-            <p class="t-body-medium t-on-surface-variant">近期运行记录，用于排查问题。</p>
+            <p class="t-body-medium t-on-surface-variant">遇到问题时可在这里查看记录。</p>
           </div>
           <div class="hact">
             <button class="btn outlined" id="btnClearLog">清空</button>
@@ -353,7 +307,7 @@
           <div class="loglist" id="logList"></div>
         </div>
       </div>
-    </details></section>
+    </details></div></section>
 
     <!-- ---------------- 日志 ---------------- -->
     
@@ -380,7 +334,7 @@
     <div class="dialog" role="dialog" aria-modal="true">
       <h2 class="t-headline-small" id="dlgTitle">开启夜间模式</h2>
       <p class="t-body-medium" id="dlgBody">
-        确认后 30 秒关闭显示器，网页静音，自动做题与自动提交会一并打开。
+        确认后 30 秒关闭显示器，网页静音，自动做本章习题与自动提交会一并打开。
       </p>
       <div class="actions">
         <button class="btn text" id="dlgCancel">取消</button>
@@ -395,6 +349,7 @@
 </div>
 
 <script src="scripts/theme.js"></script>
+<script src="scripts/study-plan.js"></script>
 <script src="scripts/app.js"></script>
 <script src="scripts/layout.js"></script>
 </body>

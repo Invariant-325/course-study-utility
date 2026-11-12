@@ -19,6 +19,7 @@
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let CHAPTERS = [];
   let QUEUE = [];
+  let LEARNING={studyStrategy:'auto',quizGateEnabled:false,quizAutoSubmit:false};
   let ISSUES = [];
   let LOGS = [];
   let TODAY = { playSeconds: 0, visionCalls: 0, visionFail: 0, promptTokens: 0, completionTokens: 0, tasksConfirmed: 0 };
@@ -104,7 +105,7 @@ function renderSideCourses() {
   const box = $('#sideCourses');
   if (!box) return;
   box.innerHTML = COURSES.map((c) => {
-    const rel = c.total == null ? '未读取章节' : c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需人工' : '未开始';
+    const rel = c.total == null ? '还没查看' : c.state === 'done' ? '已完成' : c.state === 'doing' ? '进行中' : c.state === 'manual' ? '需要检查' : '未开始';
     return (
       '<button class="lnk" data-selected="'+(c.id===selectedCourse)+'" data-course="' + escapeHtml(c.id) + '" data-state="' + c.state + '">' +
         '<span class="dot"></span>' +
@@ -218,7 +219,7 @@ function bindAccount() {
 
   function stateChip(state) {
     if (state === 'selected') return '<span class="chip tone-primary">已选择</span>';
-    if (state === 'unknown') return '<span class="chip">未读取章节</span>';
+    if (state === 'unknown') return '<span class="chip">还没查看</span>';
     if (state === 'done') return '<span class="chip tone-ok" style="height:26px"><span class="dot"></span>已完成</span>';
     if (state === 'doing') return '<span class="chip tone-primary" style="height:26px"><span class="dot"></span>进行中</span>';
     if (state === 'manual') return '<span class="chip tone-warn" style="height:26px"><span class="dot"></span>需人工</span>';
@@ -239,10 +240,10 @@ function bindAccount() {
             '<span class="cc-name">' + escapeHtml(c.name) + '</span>' +
           '</div>' +
           '<div class="cc-meta">' + stateChip(c.state) +
-            '<span>' + (c.total == null ? '点击读取章节' : c.done + '/' + c.total + ' 任务点') + '</span>' +
+            '<span>' + (c.total == null ? '点击查看章节' : c.done + '/' + c.total + ' 任务点') + '</span>' +
           '</div>' +
           '<div class="cc-foot">' +
-            (c.total==null ? '<span class="t-on-surface-variant">进度未读取</span>' : '<div class="progress" role="progressbar" aria-valuenow="'+c.done+'" aria-valuemax="'+c.total+'"><i style="width:'+pct+'%"></i></div>') +
+            (c.total==null ? '<span class="t-on-surface-variant">暂无进度</span>' : '<div class="progress" role="progressbar" aria-valuenow="'+c.done+'" aria-valuemax="'+c.total+'"><i style="width:'+pct+'%"></i></div>') +
             '<span class="cc-pct">' + (c.total == null ? '—' : pct + '%') + '</span>' +
           '</div>' +
         '</button>'
@@ -262,12 +263,14 @@ function bindAccount() {
   function renderChapters() {
     const box = $('#chapterList');
     if (!box) return;
-    const list = chapterFilter === 'all' ? CHAPTERS : CHAPTERS.filter((c) => c.state !== 'done');
+    if($('#wkMeta'))$('#wkMeta').textContent=CHAPTERS.length?CHAPTERS.length+' 个章节':'还没有章节信息';
+    const picker=$('#manualQuizChapter');if(picker){const selected=picker.value;picker.innerHTML='<option value="">选择章节</option>'+CHAPTERS.filter(c=>!c.locked).map(c=>'<option value="'+escapeHtml(c.key)+'">'+escapeHtml(c.name)+'</option>').join('');if(CHAPTERS.some(c=>c.key===selected))picker.value=selected;}
+    const list=chapterFilter==='all'?CHAPTERS:buildStudyPlan({chapters:CHAPTERS,strategy:'sequential',autoQuiz:true}).map(task=>{const c=CHAPTERS.find(c=>c.key===task.chapterKey);return {...c,name:task.name,state:task.kind==='check'?'unknown':c.state,taskKind:task.kind};});
     box.innerHTML = list.map((c) =>
       '<button class="chapter" data-chapter="' + escapeHtml(c.key||'') + '" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + (c.locked?' disabled':'') + '>' +
         '<span class="ch-dot"></span>' +
         '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
-        '<span class="ch-count">' + ({done:'全部完成',video:'仅视频完成',quiz:'仅测验完成',todo:'未完成',unknown:'待确认'}[c.state]||'待确认') + '</span>' +
+        '<span class="ch-count">' + (c.taskKind==='check'?'需要先检查':c.taskKind?'未完成':{done:'全部完成',video:'视频已完成',quiz:'习题已完成',todo:'都没完成',unknown:'进度待更新'}[c.state]||'进度待更新') + '</span>' +
       '</button>'
     ).join('');
   }
@@ -276,13 +279,16 @@ function bindAccount() {
   function renderQueue() {
     const box = $('#queueList');
     if (!box) return;
-    box.innerHTML = QUEUE.map((q) =>
+    const plan=buildStudyPlan({chapters:CHAPTERS,strategy:LEARNING.studyStrategy,autoQuiz:LEARNING.quizGateEnabled,autoSubmit:LEARNING.quizAutoSubmit,advanceOnPlatformComplete:LEARNING.advanceOnPlatformComplete});
+    if($('#planCount'))$('#planCount').textContent=plan.length?plan.length+' 步':'暂无安排';
+    if(!plan.length){box.innerHTML='<div class="t-body-small t-on-surface-variant" style="padding:12px 0">当前策略下没有待完成任务</div>';return;}
+    box.innerHTML = plan.slice(0,8).map((q) =>
       '<div class="queue-item">' +
         '<span class="pulse"' + (q.state === 'doing' ? ' data-live="true"' : '') + ' style="' +
           (q.state === 'doing' ? '' : 'background:var(--md-sys-color-outlineVariant)') + '"></span>' +
         '<div class="qi-main">' +
-          '<div class="qi-name">' + q.name + '</div>' +
-          '<div class="qi-sub">' + q.sub + '</div>' +
+          '<div class="qi-name">' + escapeHtml(q.name) + '</div>' +
+          '<div class="qi-sub">' + escapeHtml(q.sub) + '</div>' +
         '</div>' +
         (q.state === 'doing'
           ? '<span class="chip tone-primary" style="height:24px">处理中</span>'
@@ -296,7 +302,7 @@ function bindAccount() {
     const box = $('#issueBox');
     if (!box) return;
     if (!ISSUES.length) {
-      box.innerHTML = '<div class="t-body-small t-on-surface-variant" style="padding:8px 0">当前没有需要处理的异常</div>';
+      box.innerHTML = '<div class="t-body-small t-on-surface-variant" style="padding:8px 0">目前没有需要处理的问题</div>';
       return;
     }
     box.innerHTML = ISSUES.map((i) =>
@@ -359,7 +365,7 @@ function bindAccount() {
 
   // 从页面读 Runner 快照（沿用旧界面的做法）
   async function readRunner() {
-    if(App?.playbackState){try{const value=await App.playbackState();return {mounted:!!value.runner,snap:{...(value.runner||{}),...(value.video?{video:value.video}:{})},mode:value.mode,busy:value.busy};}catch{return {mounted:false,snap:{},mode:'idle'}}}
+    if(App?.playbackState){try{const value=await App.playbackState();return {mounted:!!value.runner,snap:{...(value.runner||{}),...(value.video?{video:value.video}:{})},mode:value.mode,busy:value.busy,reason:value.reason};}catch{return {mounted:false,snap:{},mode:'idle'}}}
 
     if (!App || typeof App.evalMain !== 'function') return { mounted: false, snap: {} };
     try {
@@ -399,7 +405,7 @@ function bindAccount() {
       const done = Number(sum.done) || 0;
 
       CHAPTERS = items.map((it,index) => ({
-        key:it.key||'tree-'+index,locked:!!it.locked,
+        key:it.key||'tree-'+index,locked:!!it.locked,videoDone:it.videoDone,quizDone:it.quizDone,complete:it.complete,
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
         state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.videoDone===false&&it.quizDone===false?'todo':'unknown',
         pending: it.pending || 0,
@@ -470,14 +476,14 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已读取':'正在读取课程';
+      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'需要确认进度',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已加载':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
+    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'需要确认进度',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
@@ -494,14 +500,15 @@ function bindAccount() {
     // 异常：按状态归类
     const issues = [];
     if (!MODEL.hasKey) {
-      issues.push({ kind: 'warn', title: '未配置 API Key', fix: '在「模型」页粘贴 Key 后测试连接' });
+      issues.push({ kind: 'warn', title: '还没填写模型密钥', fix: '在头像菜单的设置中填写模型密钥。' });
     }
     if (onCourse && s.state === 'blocked') {
-      issues.push({ kind: 'error', title: '任务已阻塞', fix: '查看左侧日志；必要时点「暂停」再「继续」' });
+      issues.push({ kind: 'error', title: '学习暂时停住了', fix: '可先刷新进度，再点重试；问题记录在设置中。' });
     }
     if (onCourse && s.state === 'awaitingConfirm') {
       issues.push({ kind: 'warn', title: '等待人工确认', fix: '平台未确认完成，可点继续重试或停止跳过' });
     }
+    if(onCourse&&['needsReview','blocked','awaitingConfirm'].includes(s.state)){const rawReason=d.reason||s.completion?.reasons?.join('; ')||s.lastError||'';const reason=/frame|catalog-unknown|unknown-state|无法判定|证据不足/.test(rawReason)?'还没查到准确进度。刷新后重试，或打开课程网页查看。':/未提交|提交|测验/.test(rawReason)?'本章习题还没完成或提交，请先处理习题。':'课程网站还没有确认完成。刷新进度后再试。';issues.push({kind:'warn',title:'任务尚未恢复',fix:reason});if(nowChapter)nowChapter.textContent=reason;}
     ISSUES = issues;
   }
 
@@ -554,8 +561,8 @@ function bindAccount() {
     const note = $('#accNote');
     if (note) {
       note.textContent = MODEL.hasKey
-        ? '已配置 API Key · ' + (MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机配置')
-        : '未配置 API Key，无法自动答题';
+        ? '密钥已保存 · ' + (MODEL.keySource === 'app' ? '保存在这台电脑' : MODEL.keySource === 'env' ? '电脑配置' : '电脑配置')
+        : '填写模型密钥后才能自动做题';
     }
 
     const badge = $('#navLearnBadge');
@@ -568,11 +575,11 @@ function bindAccount() {
     if (!hint) return;
     if (MODEL.hasKey) {
       const src =
-        MODEL.keySource === 'app' ? '本机加密存储' : MODEL.keySource === 'env' ? '环境变量' : '本机配置';
-      hint.textContent = '已配置 · ' + (MODEL.keyMasked || '') + ' · ' + src;
+        MODEL.keySource === 'app' ? '保存在这台电脑' : MODEL.keySource === 'env' ? '电脑配置' : '电脑配置';
+      hint.textContent = '已填写 · ' + (MODEL.keyMasked || '') + ' · ' + src;
       hint.style.color = 'var(--md-sys-color-primary)';
     } else {
-      hint.textContent = '未配置。粘贴 DeepSeek API Key 后即可自动答题';
+      hint.textContent = '还没有密钥。填写模型服务提供的 API Key 后可使用自动做题。';
       hint.style.color = 'var(--md-sys-color-error)';
     }
   }
@@ -581,9 +588,9 @@ function bindAccount() {
   let playing = false;
 
   let actionBusy=false;
-  function controlAction(){return RUNNER.mode==='preparing'?'pause':RUNNER.mode==='working'?'pause':playing?'pause':['paused','waiting'].includes(RUNNER.mode)||['paused','blocked','needsReview','awaitingConfirm','quizWait'].includes(RUNNER.snap?.state)?'resume':'start';}
+  function controlAction(){return RUNNER.mode==='preparing'?'pause':RUNNER.mode==='working'?'pause':playing?'pause':['paused','waiting','review'].includes(RUNNER.mode)||['paused','blocked','needsReview','awaitingConfirm','quizWait'].includes(RUNNER.snap?.state)?'resume':'start';}
   function updateFab() {
-    const action=controlAction(),label=RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
+    const action=controlAction(),label=RUNNER.mode==='review'?'重试':RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
     const icon=action==='pause'?'<path d="M9 5v14M15 5v14"/>':'<path d="M8 5l11 7-11 7z"/>';
     const fab=$('#fab');if(fab){fab.style.display=['settings','about'].includes(currentPage)?'none':'inline-flex';fab.classList.toggle('is-playing',action==='pause');}
     if($('#fabLabel'))$('#fabLabel').textContent=label;
@@ -712,7 +719,7 @@ function bindAccount() {
       if (verify.image) { image.src=verify.image;image.hidden=false; } else {image.removeAttribute('src');image.hidden=true;message.textContent+=' 暂未能读取二维码，可显示原网页处理。';}
     } else {image.removeAttribute('src');image.hidden=true;}
     const status=$('#backgroundStatus');
-    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',chapters:'章节已读取，可以开始学习。',complete:'可读取的章节均已完成。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
+    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',chapters:'章节已加载，可以开始学习。',complete:'可读取的章节均已完成。',opening:'正在加载章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
   }
   let autoUpdateTimer=null,updateUrl='';
   async function checkUpdates(automatic=false) {
@@ -728,8 +735,9 @@ function bindAccount() {
   async function bindLearning() {
     if(!App?.learningPreferences)return;
     const controls={quizGateEnabled:$('#swAutoQuiz'),quizAutoSubmit:$('#swAutoSubmit'),studyStrategy:$('#studyStrategy'),advanceOnPlatformComplete:$('#advanceOnPlatformComplete')};
-    const apply=values=>{for(const [key,node] of Object.entries(controls)){if(node){if(key==='studyStrategy')node.value=values[key];else node.checked=values[key]===true;}}};
+    const apply=values=>{LEARNING=values;renderQueue();renderChapters();for(const [key,node] of Object.entries(controls)){if(node){if(key==='studyStrategy')node.value=values[key];else node.checked=values[key]===true;}}if($('#workspaceStrategy'))$('#workspaceStrategy').value=values.studyStrategy;};
     apply(await App.learningPreferences());
+    $('#workspaceStrategy')?.addEventListener('change',async event=>{const node=event.target;node.disabled=true;try{apply(await App.learningPreferences({studyStrategy:node.value}));snack('学习策略已更新');}catch{snack('策略保存失败');}finally{node.disabled=false;}});
     for(const [key,node] of Object.entries(controls))node?.addEventListener('change',async()=>{
       node.disabled=true;
       try{apply(await App.learningPreferences({[key]:key==='studyStrategy'?node.value:node.checked}));snack('学习偏好已保存');}
@@ -800,12 +808,20 @@ function bindAccount() {
     } catch (e) { snack('任务操作失败：' + e.message); }
   }
   async function refreshCourses() {
-    if (App?.coursesRefresh) {const result=await App.coursesRefresh();if(!result.ok){snack(result.error || '读取失败');return;}}
+    if (App?.coursesRefresh) {const result=await App.coursesRefresh();if(!result.ok){snack(result.error || '加载失败');return;}}
     await loadCourses(); renderCourses(); renderSideCourses(); renderChapters();
-    snack(COURSES.length ? '课程数据已更新' : '请先显示网页并进入课程学习页');
+    snack(COURSES.length ? '课程已刷新' : '请先显示网页并进入课程学习页');
   }
   // ---------------- 事件绑定 ----------------
   function bind() {
+    $('#manualQuizStart')?.addEventListener('click',async()=>{
+      const chapter=CHAPTERS.find(c=>c.key===$('#manualQuizChapter')?.value);if(!chapter){snack('先选择要做题的章节');return;}
+      if(!App?.manualQuiz){snack('请在桌面版中做题');return;}
+      const button=$('#manualQuizStart');button.disabled=true;button.textContent='正在做题…';
+      try{const result=await App.manualQuiz({key:chapter.key,title:chapter.name});snack(result?.ok?result.message:result?.error||'本次做题未完成');await loadCourses();renderAll();}
+      catch{snack('做题中断，可查看课程网页');}finally{button.disabled=false;button.textContent='做题并提交';}
+    });
+
     $('#refreshProgress')?.addEventListener('click',async()=>{
       const button=$('#refreshProgress');button.disabled=true;
       try{const result=await App?.refreshProgress?.();await loadCourses();renderAll();snack(result?.ok?'进度已刷新':'未取得新的平台进度，保留待确认状态');}
@@ -813,7 +829,7 @@ function bindAccount() {
     });
     $('#chapterList')?.addEventListener('click',async event=>{
       const button=event.target.closest('[data-chapter]');if(!button||!App?.openChapter)return;
-      const chapter=CHAPTERS.find(c=>c.key===button.dataset.chapter);if(!chapter)return;
+      const chapter=CHAPTERS.find(c=>c.key===button.dataset.chapter);if(!chapter)return;if($('#manualQuizChapter'))$('#manualQuizChapter').value=chapter.key;
       const result=await App.openChapter({key:chapter.key,title:chapter.name}).catch(()=>({ok:false,error:'章节打开失败'}));
       snack(result.ok?'正在打开章节…':result.error);await pollCourseStatus();
     });

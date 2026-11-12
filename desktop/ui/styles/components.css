@@ -358,15 +358,15 @@
 .switch .knob {
   position: absolute;
   top: 50%;
-  left: 6px;
+  left: 8px;
   width: 16px;
   height: 16px;
   border-radius: var(--md-sys-shape-full);
   background: var(--md-sys-color-outline);
   transform: translateY(-50%);
-  transition: left var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
-    width var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
-    height var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring),
+  transition: left var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard),
+    width var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard),
+    height var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard),
     background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 
@@ -376,7 +376,7 @@
 }
 
 .switch input:checked + .track .knob {
-  left: 30px;
+  left: 24px;
   width: 24px;
   height: 24px;
   background: var(--md-sys-color-onPrimary);
