@@ -26,6 +26,9 @@ if (isAppUi) {
     courseStart: () => ipcRenderer.invoke('courses:start'),
     courseCancelStart: () => ipcRenderer.invoke('courses:cancel'),
     preferences: patch => ipcRenderer.invoke('app:preferences',patch),
+    learningPreferences: patch => ipcRenderer.invoke('learning:preferences',patch),
+    playbackState: () => ipcRenderer.invoke('playback:status'),
+    playbackCommand: action => ipcRenderer.invoke('playback:command',action),
     checkUpdates: () => ipcRenderer.invoke('app:updates'),
     openExternal: url => ipcRenderer.invoke('app:external',url),
     // 网页控制
@@ -51,6 +54,7 @@ if (isAppUi) {
     // 课程总览与待办队列
     courseOverview: () => ipcRenderer.invoke('course:overview'),
     openChapter: chapter => ipcRenderer.invoke('course:openChapter',chapter),
+    refreshProgress: () => ipcRenderer.invoke('course:refreshProgress'),
     tasksList: () => ipcRenderer.invoke('tasks:list'),
     tasksAdd: (task) => ipcRenderer.invoke('tasks:add', task),
     tasksUpdate: (id, patch) => ipcRenderer.invoke('tasks:update', id, patch),

@@ -359,6 +359,8 @@ function bindAccount() {
 
   // 从页面读 Runner 快照（沿用旧界面的做法）
   async function readRunner() {
+    if(App?.playbackState){try{const value=await App.playbackState();return {mounted:!!value.runner,snap:{...(value.runner||{}),...(value.video?{video:value.video}:{})},mode:value.mode,busy:value.busy};}catch{return {mounted:false,snap:{},mode:'idle'}}}
+
     if (!App || typeof App.evalMain !== 'function') return { mounted: false, snap: {} };
     try {
       const r = await App.evalMain(
@@ -460,7 +462,7 @@ function bindAccount() {
     const d = await readRunner();
     RUNNER = d;
     const s = d.snap || {};
-    playing = !!d.mounted && ['playing','locating','settling','advancing'].includes(s.state);
+    playing = d.mode?d.mode==='playing':!!d.mounted&&['playing','locating','settling','advancing'].includes(s.state);
     const onCourse = !!d.mounted;
 
     // 顶栏上下文
@@ -468,14 +470,14 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已读取':'正在读取课程';
+      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已读取':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
+    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
@@ -578,23 +580,15 @@ function bindAccount() {
   // ---------------- FAB ----------------
   let playing = false;
 
+  let actionBusy=false;
+  function controlAction(){return RUNNER.mode==='preparing'?'pause':RUNNER.mode==='working'?'pause':playing?'pause':['paused','waiting'].includes(RUNNER.mode)||['paused','blocked','needsReview','awaitingConfirm','quizWait'].includes(RUNNER.snap?.state)?'resume':'start';}
   function updateFab() {
-    const fab = $('#fab');
-    const label = $('#fabLabel');
-    if (!fab || !label) return;
-    const onWorkspace = currentPage === 'workspace';
-    fab.style.display = ['settings','about'].includes(currentPage)?'none':'inline-flex';
-    if (onWorkspace) {
-      playing ? (label.textContent = '暂停') : (label.textContent = '继续');
-      fab.classList.toggle('is-playing', playing);
-      fab.querySelector('svg').innerHTML = playing
-        ? '<path d="M9 5v14M15 5v14"/>'
-        : '<path d="M8 5l11 7-11 7z"/>';
-    } else {
-      label.textContent = '开始学习';
-      fab.classList.remove('is-playing');
-      fab.querySelector('svg').innerHTML = '<path d="M8 5l11 7-11 7z"/>';
-    }
+    const action=controlAction(),label=RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
+    const icon=action==='pause'?'<path d="M9 5v14M15 5v14"/>':'<path d="M8 5l11 7-11 7z"/>';
+    const fab=$('#fab');if(fab){fab.style.display=['settings','about'].includes(currentPage)?'none':'inline-flex';fab.classList.toggle('is-playing',action==='pause');}
+    if($('#fabLabel'))$('#fabLabel').textContent=label;
+    for(const id of ['fab','sideStart','nowToggle','wkPause']){const button=$('#'+id);if(!button)continue;button.disabled=actionBusy||!!RUNNER.busy;button.title=label;button.setAttribute('aria-label',label);if(id==='fab'){button.querySelector('svg').innerHTML=icon;}else button.innerHTML='<svg viewBox="0 0 24 24">'+icon+'</svg>'+label;}
+    if($('#wkStop'))$('#wkStop').disabled=actionBusy;
   }
 
   // ---------------- Snackbar ----------------
@@ -731,6 +725,17 @@ function bindAccount() {
     if($('#openUpdate'))$('#openUpdate').hidden=!r.available;
     if(!automatic||r.available)snack(text);
   }
+  async function bindLearning() {
+    if(!App?.learningPreferences)return;
+    const controls={quizGateEnabled:$('#swAutoQuiz'),quizAutoSubmit:$('#swAutoSubmit'),studyStrategy:$('#studyStrategy'),advanceOnPlatformComplete:$('#advanceOnPlatformComplete')};
+    const apply=values=>{for(const [key,node] of Object.entries(controls)){if(node){if(key==='studyStrategy')node.value=values[key];else node.checked=values[key]===true;}}};
+    apply(await App.learningPreferences());
+    for(const [key,node] of Object.entries(controls))node?.addEventListener('change',async()=>{
+      node.disabled=true;
+      try{apply(await App.learningPreferences({[key]:key==='studyStrategy'?node.value:node.checked}));snack('学习偏好已保存');}
+      catch{snack('保存失败，请重试');apply(await App.learningPreferences());}finally{node.disabled=false;}
+    });
+  }
   function bindNight() {
     const button=$('#btnNight'),capsule=$('#nightCountdown'),label=$('#nightCountdownText');
     if(!button||!capsule||!label)return;
@@ -776,6 +781,12 @@ function bindAccount() {
     catch (e) { snack('窗口操作失败：' + e.message); }
   }
   async function runnerAction(method) {
+    if(App?.playbackCommand){
+      if(actionBusy)return;actionBusy=true;updateFab();
+      try{const result=await App.playbackCommand(method);snack(result?.ok?(result.pending?'正在准备课程，可取消':({start:'已请求开始',resume:'已请求继续',pause:'已暂停',stop:'已停止'}[method])):result?.error||'操作未生效');await loadRunnerState();}
+      catch{snack('操作失败，请重试');}finally{actionBusy=false;updateFab();}return;
+    }
+
     if (!App || !App.evalMain) { snack('预览模式不执行课程任务'); return; }
     try {
       if ((method==='pause'||method==='stop') && App.courseCancelStart) await App.courseCancelStart();
@@ -795,6 +806,11 @@ function bindAccount() {
   }
   // ---------------- 事件绑定 ----------------
   function bind() {
+    $('#refreshProgress')?.addEventListener('click',async()=>{
+      const button=$('#refreshProgress');button.disabled=true;
+      try{const result=await App?.refreshProgress?.();await loadCourses();renderAll();snack(result?.ok?'进度已刷新':'未取得新的平台进度，保留待确认状态');}
+      catch{snack('进度刷新失败');}finally{button.disabled=false;}
+    });
     $('#chapterList')?.addEventListener('click',async event=>{
       const button=event.target.closest('[data-chapter]');if(!button||!App?.openChapter)return;
       const chapter=CHAPTERS.find(c=>c.key===button.dataset.chapter);if(!chapter)return;
@@ -807,7 +823,7 @@ function bindAccount() {
 
     const fab = $('#fab');
     if (fab) {
-      fab.addEventListener('click', () => { goto('workspace'); runnerAction(playing ? 'pause' : RUNNER.snap?.state === 'paused' ? 'resume' : 'start'); });
+      fab.addEventListener('click', () => { goto('workspace'); runnerAction(controlAction()); });
     }
 
     const min = $('#winMin');
@@ -818,7 +834,7 @@ function bindAccount() {
     if (close) close.addEventListener('click', () => windowAction('hide'));
 
     const ss = $('#sideStart');
-    if (ss) ss.addEventListener('click', () => { goto('workspace'); runnerAction('start'); });
+    if (ss) ss.addEventListener('click', () => { goto('workspace'); runnerAction(controlAction()); });
 
     const gr = $('#gRefresh');
     if (gr) gr.addEventListener('click', refreshCourses);
@@ -981,12 +997,12 @@ function bindAccount() {
     if (bl2) bl2.addEventListener('click', () => { LOGS.length = 0; renderLogs(); snack('日志已清空'); });
 
     const pz = $('#wkPause');
-    if (pz) pz.addEventListener('click', () => runnerAction('pause'));
+    if (pz) pz.addEventListener('click', () => runnerAction(controlAction()));
     const sp = $('#wkStop');
     if (sp) sp.addEventListener('click', () => openDialog('结束任务', '结束后当前章节会停在这里，可随时重新开始。', () => runnerAction('stop')));
 
     const nt2 = $('#nowToggle');
-    if (nt2) nt2.addEventListener('click', () => runnerAction(playing ? 'pause' : RUNNER.snap?.state === 'paused' ? 'resume' : 'start'));
+    if (nt2) nt2.addEventListener('click', () => runnerAction(controlAction()));
 
     // 内容滚动时显示顶部渐隐
     const main = $('#main');
@@ -1036,6 +1052,7 @@ function bindAccount() {
     bindTheme();
     bindAccount();
     bindNight();
+    bindLearning().catch(()=>snack("学习偏好加载失败"));
     bindProduct().catch(()=>{});
     $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
     $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
@@ -1080,7 +1097,7 @@ function bindAccount() {
         renderSideCourses();
         renderChapters();
         renderQueue();
-      }, 3000);
+      }, 750);
       setInterval(async () => {
         await loadStats();
         await loadModel();

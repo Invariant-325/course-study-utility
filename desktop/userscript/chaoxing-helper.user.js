@@ -160,6 +160,8 @@ const Config = (function () {
     // ---- 章节测验闸门：本节视频播完后先做本节测验，再切下一节 ----
     // 默认关闭：只在用户按下「自动做题」后才处理章节测验；
     // 视频播放中弹出的题目不受此开关影响，仍会自动作答（否则无法继续播放）。
+    studyStrategy: 'auto',
+    advanceOnPlatformComplete: true,
     quizGateEnabled: false,
     quizPageTimeoutMs: 20000,
 
@@ -792,6 +794,46 @@ const Dom = (function () {
 // 完成态只信平台渲染的信号，不用本地记账认定"已完成"。
 // ---------------------------------------------------------------------------
 const CourseTree = (function () {
+  let freshCatalog={url:'',at:0,counts:new Map(),summary:null},refreshing=null,lastAttempt={url:'',at:0};
+  const visitedCatalog=new Set();
+  function chapterName(el){return Dom.textOf(queryFirst(el,SEL.catalogNameNode)||el,160).replace(/\s*\d+\s*个待完成(?:任务点)?\s*$/,'').trim();}
+  function resetTraversal(){visitedCatalog.clear();}
+  async function refreshCatalog(force){
+    if(typeof window.fetch!=='function'||typeof window.DOMParser!=='function')return {ok:false,reason:'unavailable'};
+    if(refreshing)return refreshing;
+    if(!force&&freshCatalog.url===location.href&&Date.now()-freshCatalog.at<30000)return {ok:true,cached:true};
+    const url=location.href;
+    if(!force&&lastAttempt.url===url&&Date.now()-lastAttempt.at<30000)return {ok:false,reason:'cooldown'};
+    lastAttempt={url,at:Date.now()};
+    refreshing=(async()=>{const controller=new window.AbortController();const timer=setTimeout(()=>controller.abort(),6000);
+      try{
+        const response=await window.fetch(url,{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
+        if(!response.ok||location.href!==url)return {ok:false,reason:'navigation-or-network'};
+        const doc=new window.DOMParser().parseFromString(await response.text(),'text/html');
+        const nodes=[...doc.querySelectorAll('.posCatalog_select')].filter(el=>!el.classList.contains(SEL.firstLayerClass));
+        if(!nodes.length)return {ok:false,reason:'no-fresh-catalog'};
+        const counts=new Map();
+        for(const el of nodes){const raw=Dom.textOf(el,200),m=raw.match(SEL.catalogPendingPattern);let pending=m?Number(m[1]):null;
+          if(pending===null&&el.querySelector('[title="已完成"],[aria-label="已完成"],.catalog_points_yi,.catalog_points_done'))pending=0;
+          if(pending!==null)counts.set(chapterName(el),pending);
+        }
+        if(location.href!==url)return {ok:false,reason:'navigation'};
+        const walker=doc.createTreeWalker(doc.body,4),parts=[];while(walker.nextNode())parts.push(walker.currentNode.nodeValue);
+        const sum=parts.join(' ').match(/已完成任务点\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/);
+        freshCatalog={url,at:Date.now(),counts,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
+        return {ok:true,known:counts.size};
+      }catch{return {ok:false,reason:'refresh-failed'}}finally{clearTimeout(timer);refreshing=null;}
+    })();return refreshing;
+  }
+  function currentCatalogComplete(){const active=catalogEntries().items.find(isActiveItem);return !!active&&readCatalogPending(active)===0;}
+  function selectFirstIncomplete(){
+    const items=catalogEntries().items;if(!items.length)return {ok:true,changed:false};
+    const first=items.find(el=>readCatalogPending(el)!==0);if(!first)return {ok:true,changed:false};
+    if(readCatalogPending(first)===null)return {ok:false,reason:'unknown-progress'};
+    if(isActiveItem(first))return {ok:true,changed:false};
+    const before=signatureOf(enumerate());
+    return {ok:Dom.click(queryFirst(first,SEL.catalogNameNode)||first),changed:true,before};
+  }
   // ---------- 完成态（自身 + 向上有限查找）----------
   function readStateOnNode(el) {
     try {
@@ -982,7 +1024,7 @@ const CourseTree = (function () {
           container: container,
           frames: frames,
           frameEl: frames[0] || null,
-          state: stateInfo.state,
+          state: currentCatalogComplete()?'finished':stateInfo.state,
           stateBy: stateInfo.by,
           stateLabel: stateInfo.label || '',
           type: detectJobType(frames),
@@ -1178,6 +1220,7 @@ const CourseTree = (function () {
   // ---------- 目录层完成度 ----------
   function readCatalogPending(itemEl) {
     if (!itemEl) return null;
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(chapterName(itemEl)))return freshCatalog.counts.get(chapterName(itemEl));
     const text = Dom.textOf(itemEl, 200);
     if (!text) return null;
     const match = text.match(SEL.catalogPendingPattern);
@@ -1246,6 +1289,7 @@ const CourseTree = (function () {
   // 实机验证发现：.chapter_head 位于内层 iframe（knowledge/cards），不在顶层文档，
   // 因此必须遍历全部可达文档，不能只看 window.document。
   function readCatalogSummary() {
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.summary)return {...freshCatalog.summary};
     let docs = [];
     try {
       const collected = Dom.collectDocuments(window, SEL.maxFrameDepth);
@@ -1305,13 +1349,18 @@ const CourseTree = (function () {
     }
     if (activeIndex < 0) return { ok: false, reason: 'no-active-item' };
 
-    const next = catalog.items[activeIndex + 1];
-    if (!next) return { ok: false, reason: 'last-item' };
+    visitedCatalog.add(chapterName(catalog.items[activeIndex]));
+    const strategy=typeof Config==='undefined'?'sequential':Config.get('studyStrategy');
+    const order=strategy==='auto'||strategy==='quiz-first'||strategy==='quiz-only'
+      ? catalog.items.map((_,i)=>i) : [...catalog.items.keys()].slice(activeIndex+1).concat([...catalog.items.keys()].slice(0,activeIndex));
+    const nextIndex=order.find(i=>i!==activeIndex&&!visitedCatalog.has(chapterName(catalog.items[i]))&&readCatalogPending(catalog.items[i])>0);
+    const next=nextIndex===undefined?null:catalog.items[nextIndex];
+    if(!next)return {ok:false,reason:catalog.items.some(el=>readCatalogPending(el)===null&&!visitedCatalog.has(chapterName(el)))?'unverified-catalog':'all-complete'};
 
     const target = queryFirst(next, SEL.catalogNameNode) || next;
     const title = Dom.textOf(next, 40);
     if (!Dom.click(target)) return { ok: false, reason: 'click-failed' };
-    return { ok: true, by: 'catalog:' + catalog.rootSelector, title: title, index: activeIndex + 1 };
+    return { ok: true, by: 'catalog:' + catalog.rootSelector, title: title, index: nextIndex };
   }
 
   function clickNextSectionButton() {
@@ -1363,6 +1412,8 @@ const CourseTree = (function () {
   }
 
   return {
+    activeCatalogKey(){const active=catalogEntries().items.find(isActiveItem);return active?chapterName(active):'';},
+    refreshCatalog,resetTraversal,currentCatalogComplete,selectFirstIncomplete,
     enumerate,
     enumerateDetail,
     signatureOf,
@@ -2564,6 +2615,8 @@ const Runner = (function () {
     running: false,
     currentJob: null,
     currentTitle: '',
+    boundCatalog: '',
+    handledWork:new Set(),
     playedCount: 0, // 真正开始播放过的次数
     confirmedCount: 0, // 平台确认完成的次数
     pendingConfirm: new Set(), // 用户跳过、待人工确认的 stableKey
@@ -2860,6 +2913,7 @@ const Runner = (function () {
   async function playJob(job, token, options) {
     const opts = options || {};
     if (isStale(token) || !job) return;
+    R.boundCatalog=CourseTree.activeCatalogKey?.()||CourseTree.catalogProgress().items.find(i=>i.active)?.text||'';
     R.currentJob = job;
     R.currentTitle = job.title;
     if (sm.state() !== 'locating') sm.go('locating', 'job-selected');
@@ -3095,11 +3149,13 @@ const Runner = (function () {
   }
 
   async function processPendingQuiz(token, jobs) {
-    if (Config.get('quizGateEnabled') === false) return 'off';
+    if (Config.get('quizGateEnabled') === false || Config.get('studyStrategy') === 'video-only') return 'off';
     if (typeof CourseTree.findPendingWorkJobs !== 'function') return 'off';
     if (typeof ChapterQuizRunner === 'undefined') return 'off';
 
-    const pending = CourseTree.findPendingWorkJobs(jobs);
+    const rawPending = CourseTree.findPendingWorkJobs(jobs);
+    const pending=rawPending.filter(j=>!R.handledWork.has(j.stableKey||j.id));
+    if(rawPending.length&&!pending.length){enterQuizManual('测验已提交，等待平台确认；刷新进度后继续，避免重复作答');return 'blocked';}
     if (!pending.length) return 'none';
 
     Log.info('本节还有 ' + pending.length + ' 个未完成章节测验，先做完再继续');
@@ -3155,6 +3211,8 @@ const Runner = (function () {
       return 'blocked';
     }
 
+    R.handledWork.add(pending[0].stableKey||pending[0].id);
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog(true);
     Log.info('本章测验已完成并提交（填 ' + (result.filled || 0) + ' 题），继续连播');
     return 'handled';
   }
@@ -3175,7 +3233,7 @@ const Runner = (function () {
     const beforeSignature = CourseTree.signatureOf(beforeJobs);
 
     // 1) 同页仍有未完成视频（排除已跳过待确认的任务）
-    const pick = CourseTree.pickNextVideoTarget(beforeJobs, R.currentJob ? R.currentJob.id : null, {
+    const pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(beforeJobs, R.currentJob ? R.currentJob.id : null, {
       excludeKeys: R.pendingConfirm,
     });
     if (pick.job) {
@@ -3194,10 +3252,20 @@ const Runner = (function () {
     }
     if (gate === 'blocked') return;
 
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog();
+    if(isStale(token))return;
+    if(Config.get('studyStrategy')==='auto'){
+      const active=CourseTree.catalogProgress().items.find(i=>i.active);
+      const jobs=CourseTree.enumerateDetail().jobs;
+      if(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0){
+        enterNeedsReview('自动策略：本章仍有未完成或待确认的任务，完成并刷新进度后继续');return;
+      }
+    }
     // 2) 切换下一节
     let outcome = CourseTree.clickNextCatalogItem();
     Log.info('目录切换：' + (outcome.ok ? '成功（' + (outcome.title || '') + '）' : '失败（' + outcome.reason + '）'));
-    if (!outcome.ok) {
+    if (!outcome.ok && outcome.reason==='unverified-catalog') {enterNeedsReview('章节进度尚未核实，已停止自动推进');return;}
+    if (!outcome.ok && outcome.reason!=='all-complete') {
       outcome = CourseTree.clickNextSectionButton();
       Log.info('按钮切换：' + (outcome.ok ? '成功（' + outcome.by + '）' : '失败（' + outcome.reason + '）'));
     }
@@ -3251,6 +3319,14 @@ const Runner = (function () {
     if (sm.state() !== 'locating') sm.go('locating', afterJobId ? 'continue-after' : 'begin');
     publish();
 
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog();
+    if(isStale(token))return;
+    if(Config.get('studyStrategy')==='quiz-only'&&Config.get('quizGateEnabled')!==true){block('仅补测验需要先开启自动做题');return;}
+    if(Config.get('studyStrategy')==='quiz-first'){
+      const gate=await processPendingQuiz(token,CourseTree.enumerateDetail().jobs);
+      if(gate==='blocked')return;
+      if(gate==='handled'){if(isStale(token))return;await locateAndPlay(token,afterJobId);return;}
+    }
     const detail = CourseTree.enumerateDetail();
     let jobs = detail.jobs;
     const inaccessible = detail.inaccessible;
@@ -3270,7 +3346,7 @@ const Runner = (function () {
       );
     }
 
-    let pick = CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+    let pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
     let target = pick.job;
 
     if (!target && !jobs.length) {
@@ -3278,7 +3354,7 @@ const Runner = (function () {
       const waited = await CourseTree.waitForJobsChange('', 8000);
       if (isStale(token)) return;
       jobs = waited.jobs;
-      pick = CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+      pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
       target = pick.job;
     }
 
@@ -3447,12 +3523,8 @@ const Runner = (function () {
   }
 
   function stopQuiz() {
-    if (typeof QuizRunner === 'undefined') return;
-    try {
-      QuizRunner.stop();
-    } catch (e) {
-      /* ignore */
-    }
+    try {if(typeof QuizRunner!=='undefined')QuizRunner.stop();}catch{}
+    try {if(typeof ChapterQuizRunner!=='undefined')ChapterQuizRunner.stop();}catch{}
   }
 
   // ---------------- awaitingConfirm 的三个操作 ----------------
@@ -3515,6 +3587,8 @@ const Runner = (function () {
     R.playedCount = 0;
     R.confirmedCount = 0;
     R.advanceGuard = 0;
+    R.handledWork=new Set();
+    if(typeof CourseTree.resetTraversal==='function')CourseTree.resetTraversal();
     R.resumeAttempts = 0;
     R.playRejectCount = 0;
     R.lastError = '';
@@ -3529,9 +3603,19 @@ const Runner = (function () {
     if (R.pendingConfirm.size) {
       Log.info('已载入 ' + R.pendingConfirm.size + ' 个历史跳过任务，本次将排除它们');
     }
+    sm.go('locating','start-prepare');
     publish();
 
-    locateAndPlay(token, null).catch(function (e) {
+    (async()=>{
+      if(Config.get('studyStrategy')==='auto'&&typeof CourseTree.selectFirstIncomplete==='function'){
+        await CourseTree.refreshCatalog(true);if(isStale(token))return;
+        const first=CourseTree.selectFirstIncomplete();
+        if(!first.ok){enterNeedsReview('自动策略：前面章节进度未知或入口不可用，刷新确认后继续');return;}
+        if(first.changed)await CourseTree.waitForJobsChange(first.before,Number(Config.get('advanceTimeoutMs'))||15000);
+        if(isStale(token))return;
+      }
+      await locateAndPlay(token,null);
+    })().catch(function (e) {
       Log.error('主流程异常：' + (e && e.message));
       block('主流程异常：' + (e && e.message));
     });
@@ -3540,13 +3624,14 @@ const Runner = (function () {
 
   function pause() {
     const state = sm.state();
-    if (['locating', 'playing', 'settling', 'advancing'].indexOf(state) === -1) {
+    if (['locating', 'playing', 'settling', 'advancing', 'quizWait'].indexOf(state) === -1) {
       Log.warn('当前状态（' + sm.label() + '）不可暂停');
       return false;
     }
     R.runToken++;
     R.running = false;
     const video = VideoCtl.current();
+    stopQuiz();
     stopAll();
     if (video) {
       try {
@@ -3762,6 +3847,23 @@ const Runner = (function () {
     },
     quizSnapshot() {
       return typeof QuizRunner !== 'undefined' ? QuizRunner.snapshot() : null;
+    },
+    async refreshProgress(force){
+      const token=R.runToken;
+      const result=typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(force):{ok:false};
+      if(!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
+        const video=VideoCtl.current();stopWatchdog();VideoCtl.detach();if(video)video.pause();
+        Log.info('平台已确认当前视频任务完成，停止播放并检查本章后续任务');sm.go('settling','platform-confirmed');sm.go('advancing','platform-confirmed');goAdvance(token);
+      }
+      return result;
+    },
+    reconcilePlayback(){
+      if(!R.running||sm.state()!=='playing')return;
+      const active=CourseTree.activeCatalogKey?.()||CourseTree.catalogProgress().items.find(i=>i.active)?.text||'';
+      const video=VideoCtl.current();
+      if((video&&video.isConnected===false)||(R.boundCatalog&&active&&R.boundCatalog!==active)){
+        R.runToken++;R.running=false;stopAll();sm.go('stopped','manual-chapter-change');publish();
+      }
     },
     diagnose,
     snapshot,

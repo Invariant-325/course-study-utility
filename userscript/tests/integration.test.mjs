@@ -141,6 +141,8 @@ test('集成：全部完成后进入 completed，不回头重播', async () => {
   const { exports, document, window } = loadEnv(FILES, { html: '<!doctype html><html><body></body></html>' });
   const { Runner, Config } = exports;
   Config.load();
+  Config.set('studyStrategy','video-only'); // 本用例只有视频任务，没有课程目录证据
+
   Config.set('settleTimeoutMs', 200);
 
   const jobs = buildPage(exports, document, { total: 1, firstState: 'unfinished', finishedAfter: 0 });

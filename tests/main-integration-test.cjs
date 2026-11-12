@@ -25,7 +25,12 @@ app.whenReady().then(async()=>{try{
  assert((await ui('window.__cxApp.evalMain("!!window.__cxNaturalWatchApp.runner")')).result);
  const blocked=await ui('window.__cxApp.goto("https://evil.test/")');assert.equal(blocked.ok,false);
  console.log('PASS UI start enters chapter, main runner bridge works, and main goto rejects foreign URL');
- const scheduled=await ui('window.__cxApp.nightSchedule(30000)');assert(scheduled.ok);assert(scheduled.executeAt-Date.now()>29000);assert((await ui('window.__cxApp.nightStatus()')).pending);
+ const preferences=await ui('window.__cxApp.learningPreferences({quizGateEnabled:true,quizAutoSubmit:true,studyStrategy:"quiz-first",advanceOnPlatformComplete:false})');assert(preferences.quizGateEnabled&&preferences.quizAutoSubmit);assert.equal(preferences.studyStrategy,'quiz-first');
+ const reloaded=new Promise(resolve=>win.webContents.once('did-finish-load',resolve));win.webContents.reload();await reloaded;await pause(250);
+ assert.equal(await ui('document.getElementById("swAutoQuiz").checked'),true);assert.equal(await ui('document.getElementById("swAutoSubmit").checked'),true);assert.equal(await ui('document.getElementById("studyStrategy").value'),'quiz-first');
+ assert.equal(await ui('document.getElementById("advanceOnPlatformComplete").checked'),false);
+ console.log('PASS persisted quiz/submit switches and strategy restored after renderer reload');
+ const scheduled=await ui('window.__cxApp.nightSchedule(30000)');assert(scheduled.ok);assert((await ui('window.__cxApp.nightStatus()')).preventingSleep);assert(scheduled.executeAt-Date.now()>29000);assert((await ui('window.__cxApp.nightStatus()')).pending);
  await ui('window.__cxApp.nightCancel()');assert.equal((await ui('window.__cxApp.nightStatus()')).pending,false);
  console.log('PASS real night IPC schedules 30 seconds and cancels immediately; monitor command never executes');
  await pause(300);const store=JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'store.json')));assert(store.courseProgressByAccount);

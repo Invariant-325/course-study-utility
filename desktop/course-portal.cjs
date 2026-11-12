@@ -1,6 +1,6 @@
 const { createHash } = require('node:crypto');
 const { isPlatformUrl } = require('./browser-policy.cjs');
-const { catalogCode } = require('./page-catalog.cjs');
+const { catalogCode,refreshCatalogCode } = require('./page-catalog.cjs');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // These readers run in the platform's own renderer. No authentication result is
@@ -53,7 +53,7 @@ function enterStudyPage() {
   a.click(); return true;
 }
 
-function createCoursePortal({ browser, interval = 1800 }) {
+function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStrategy=()=> 'auto' }) {
   const courses = new Map();
   let profile={name:'',avatar:''};
   let selected = '', pendingStart = false, busy = false, refreshBusy = false, stopped = false;
@@ -120,7 +120,7 @@ function createCoursePortal({ browser, interval = 1800 }) {
         } catch { /* Frame can navigate during an auth callback. */ }
       }
       state.verification=verification;
-      if (verification) { openingSince=Date.now();state.phase=verification.kind==='face'?'verification':'login'; return; }
+      if (verification) { onActivity(false);openingSince=Date.now();state.phase=verification.kind==='face'?'verification':'login'; return; }
       const wc=browser.view?.webContents;
       if (!wc || wc.isDestroyed()) return;
       let ready={mounted:false},studyFrame=null;
@@ -129,6 +129,8 @@ function createCoursePortal({ browser, interval = 1800 }) {
         if(value.mounted){ready=value;studyFrame=frame;break;}
       }
       if (ready.mounted) {
+        await studyFrame.executeJavaScript('Promise.resolve(window.__cxNaturalWatchApp.runner.refreshProgress?.(false))',true).catch(()=>null);
+        onActivity(['playing','locating','settling','advancing','quizWait','awaitingConfirm'].includes(ready.state));
         state.phase=['playing','locating','settling','advancing','quizWait','awaitingConfirm'].includes(ready.state)?'running':'ready'; state.error='';
         if (pendingStart) {
           const selectedAtStart=selected;
@@ -138,16 +140,17 @@ function createCoursePortal({ browser, interval = 1800 }) {
           if(started&&selected===selectedAtStart){pendingStart=false;state.phase='running';}
         }
       } else if (selected) {
+        onActivity(false);
         state.phase='opening';
         let catalogFrame=null,catalog=null;
         for(const frame of all){const value=await frame.executeJavaScript(catalogCode(),true).catch(()=>null);if(value?.ok){catalog=value;catalogFrame=frame;break;}}
-        if(catalog){state.phase='chapters';state.error='';if(!pendingStart)return;}
+        if(catalog){await catalogFrame.executeJavaScript(refreshCatalogCode(),true).catch(()=>null);state.phase='chapters';state.error='';if(!pendingStart)return;}
         if(Date.now()-openingSince>25000){state.phase='manual';state.error='未能打开章节，可在主界面重试或显示网页查看';}
         if(catalog&&pendingStart){
           const key=catalogFrame.url,attempt=attempted.get(key);
           if(attempt&&Date.now()-attempt.at<4000)return;
           if(attempt?.count>=3){state.phase='manual';state.error='章节打开失败，可重新选择章节重试';return;}
-          const result=await catalogFrame.executeJavaScript(catalogCode({}),true).catch(()=>({ok:false}));
+          const result=await catalogFrame.executeJavaScript(catalogCode({strategy:getStrategy()}),true).catch(()=>({ok:false}));
           if(result.reason==='no-pending-chapter'){pendingStart=false;state.phase='complete';return;}
           attempted.set(key,{at:Date.now(),count:(attempt?.count||0)+1});return;
         }
@@ -164,9 +167,18 @@ function createCoursePortal({ browser, interval = 1800 }) {
   const timer=setInterval(tick,interval); timer.unref?.();
   return {
     async list() { await tick(); return {ok:true,courses:[...courses.values()].map(({id,name,cover})=>({id,name,cover})),state:{...state},profile:{...profile}}; },
-    status() { return {...state,...(browser.info?.().error?{error:browser.info().error}:{})}; },
+    status() { return {...state,pendingStart,...(browser.info?.().error?{error:browser.info().error}:{})}; },
     async overview() {
       for(const frame of frames()){try{const data=await frame.executeJavaScript(catalogCode(),true);if(data?.ok)return data;}catch{}}
+      return {ok:false,reason:'no-catalog'};
+    },
+    async refreshProgress(){
+      for(const frame of frames()){
+        const runner=await frame.executeJavaScript('window.__cxNaturalWatchApp?.runner?.refreshProgress?.(true)').catch(()=>null);
+        if(runner)return runner;
+        const catalog=await frame.executeJavaScript(catalogCode()).catch(()=>null);
+        if(catalog?.ok)return frame.executeJavaScript(refreshCatalogCode(true)).catch(()=>({ok:false}));
+      }
       return {ok:false,reason:'no-catalog'};
     },
     async openChapter(chapter) {
@@ -209,7 +221,7 @@ function createCoursePortal({ browser, interval = 1800 }) {
     },
     async start() { if(!selected)return {ok:false,error:'先从主界面选择一门课程'};pendingStart=true;await tick();return {ok:true,pending:state.phase!=='running',state:{...state}}; },
     cancelStart() { pendingStart=false; },
-    close() {stopped=true;pendingStart=false;clearInterval(timer);courses.clear();state.verification=null;},
+    close() {stopped=true;pendingStart=false;onActivity(false);clearInterval(timer);courses.clear();state.verification=null;},
     tick,
   };
 }

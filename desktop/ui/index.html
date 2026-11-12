@@ -193,6 +193,7 @@
           <button class="wktab" data-wk="todo" aria-selected="false">待完成</button>
           <button class="wktab" data-wk="manual" aria-selected="false">需人工</button>
           <div class="wktab-fill"></div>
+          <button class="btn text" id="refreshProgress">刷新进度</button>
           <span class="wktab-meta" id="wkMeta">章节尚未读取</span>
         </div>
 
@@ -294,7 +295,8 @@
         </div>
 
         <div class="settings-section">
-          <div class="sec-title">学习偏好</div>
+          <div class="sec-title">学习偏好</div><label class="preference card filled"><span>平台确认完成后提前结束视频<small>平台已标记当前视频完成时进入本章后续任务，不要求播到结尾。不按固定百分比猜测完成。</small></span><input type="checkbox" id="advanceOnPlatformComplete"></label>
+          <div class="card filled" style="margin-bottom:12px"><label for="studyStrategy">学习策略</label><select id="studyStrategy"><option value="auto">自动：从第一章检查，本章全部完成后继续</option><option value="sequential">按章完成：视频后完成本章测验</option><option value="quiz-first">优先测验：先补测验，再看视频</option><option value="quiz-only">仅补测验：跳过视频</option><option value="video-only">仅看视频：不处理章节测验</option></select><p class="hint">测验策略仍遵循自动做题和自动提交开关；未知完成状态需核实后继续。</p></div>
           <div class="card filled">
             <div class="setting-row">
               <div class="sr-main">
@@ -302,7 +304,7 @@
                 <div class="sr-sub">本节视频播完后，先完成本章测验再进入下一节。</div>
               </div>
               <label class="switch">
-                <input type="checkbox" id="swAutoQuiz" checked />
+                <input type="checkbox" id="swAutoQuiz" />
                 <span class="track"><span class="knob"></span></span>
               </label>
             </div>

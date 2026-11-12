@@ -57,6 +57,8 @@ const Config = (function () {
     // ---- 章节测验闸门：本节视频播完后先做本节测验，再切下一节 ----
     // 默认关闭：只在用户按下「自动做题」后才处理章节测验；
     // 视频播放中弹出的题目不受此开关影响，仍会自动作答（否则无法继续播放）。
+    studyStrategy: 'auto',
+    advanceOnPlatformComplete: true,
     quizGateEnabled: false,
     quizPageTimeoutMs: 20000,
 

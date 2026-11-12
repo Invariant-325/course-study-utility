@@ -26,6 +26,8 @@ const { createCourseBrowser } = require("./course-browser.cjs");
 const { retainLogin } = require("./login-session.cjs");
 const { isPlatformUrl } = require("./browser-policy.cjs");
 const { installFrameBridge } = require("./frame-bridge.cjs");
+const sleepGuard=require('./sleep-guard.cjs').createSleepGuard(electron.powerSaveBlocker);
+app.on('before-quit',()=>sleepGuard.close());
 // Preserve the established data directory across the display-name change.
 if (!app.commandLine.hasSwitch('user-data-dir')) {
   const legacyData = path.join(app.getPath('appData'), 'chaoxing-helper-desktop');
@@ -70,6 +72,7 @@ let isQuitting = false;
 let win = null;
 let browser = null;
 let coursePortal = null;
+let playbackController=null;
 const { createCoursePortal } = require('./course-portal.cjs');
 const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
@@ -221,7 +224,8 @@ async function createWindow() {
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
     preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog,defaultMuted:store.defaultWebMuted===true });
   // Use the portal's own course-menu handler after normal platform login.
-  coursePortal = createCoursePortal({ browser });
+  coursePortal = createCoursePortal({ browser,getStrategy:()=>{try{return JSON.parse(store['cxNaturalWatch:cfg.studyStrategy']||'"auto"')}catch{return 'auto'}},onActivity:active=>sleepGuard.set('runner',active) });
+  playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal});
   coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
   win.on('close', event => {
     // 收起窗口 = 收进托盘（不退出），这样刷课能继续
@@ -572,6 +576,21 @@ async function askVision(payload) {
 
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
+  ipcMain.handle('playback:status',async()=>{const value=playbackController?await playbackController.status():{ok:false};sleepGuard.set('playback',['playing','preparing','working'].includes(value.mode));return value;});
+  ipcMain.handle('playback:command',(_e,action)=>playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'});
+  ipcMain.handle('learning:preferences',async (_event,patch)=>{
+    const keys=['quizGateEnabled','quizAutoSubmit','studyStrategy','advanceOnPlatformComplete'];
+    const modes=['auto','sequential','quiz-first','quiz-only','video-only'];
+    const values={};
+    for(const key of keys){let value=store['cxNaturalWatch:cfg.'+key];try{value=typeof value==='string'?JSON.parse(value):value}catch{value=undefined}values[key]=key==='studyStrategy'?(modes.includes(value)?value:'auto'):key==='advanceOnPlatformComplete'?value!==false:value===true;}
+    if(patch){
+      for(const key of keys){const v=patch[key];if(key==='studyStrategy'?modes.includes(v):typeof v==='boolean')values[key]=v;}
+      for(const key of keys)store['cxNaturalWatch:cfg.'+key]=JSON.stringify(values[key]);saveStore();
+      const frames=[];if(browser?.view)collectFrames(browser.view.webContents.mainFrame,frames);
+      await Promise.all(frames.filter(f=>isPlatformUrl(f.url)).map(f=>f.executeJavaScript(`(()=>{const c=window.__cxNaturalWatchApp?.config;if(c)for(const [k,v] of Object.entries(${JSON.stringify(values)}))c.set(k,v);return true})()`).catch(()=>false)));
+    }
+    return values;
+  });
   const externalBase='https://github.com/Invariant-325';
   ipcMain.handle('app:external',async (_e,url)=>{let u;try{u=new URL(url)}catch{return{ok:false}}if(u.origin!=='https://github.com'||u.username||u.password||!(u.pathname==='/Invariant-325'||u.pathname==='/Invariant-325/course-study-utility'||u.pathname.startsWith('/Invariant-325/course-study-utility/')))return{ok:false};await electron.shell.openExternal(u.href);return{ok:true}});
   ipcMain.handle('app:preferences',(_e,patch)=>{if(patch&&typeof patch.defaultWebMuted==='boolean'){store.defaultWebMuted=patch.defaultWebMuted;browser?.setMuted(patch.defaultWebMuted)}if(patch&&typeof patch.autoCheckUpdates==='boolean')store.autoCheckUpdates=patch.autoCheckUpdates;if(patch)saveStore();return{defaultWebMuted:store.defaultWebMuted===true,autoCheckUpdates:store.autoCheckUpdates!==false}});
@@ -581,6 +600,8 @@ function registerIpc() {
   ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
   ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
   ipcMain.handle('course:openChapter', (_e,chapter) => coursePortal ? coursePortal.openChapter(chapter) : {ok:false});
+  ipcMain.handle('course:refreshProgress',()=>coursePortal?coursePortal.refreshProgress():{ok:false});
+
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
   ipcMain.handle('courses:start', () => coursePortal ? coursePortal.start() : {ok:false});
   ipcMain.handle('courses:cancel', () => {coursePortal?.cancelStart();return {ok:true};});
@@ -1018,6 +1039,7 @@ function registerIpc() {
   }
 
   ipcMain.handle('night:schedule', async (_e, delayMs) => {
+    sleepGuard.set('night',true);
     if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
     const wait = Math.max(0, Number(delayMs) || 30000);
     nightState = { pending: true, active: false, executeAt: Date.now() + wait, error: '' };
@@ -1039,6 +1061,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('night:cancel', async () => {
+    sleepGuard.set('night',false);
     if (nightTimer) { clearTimeout(nightTimer); nightTimer = null; }
     setAppMuted(store.defaultWebMuted===true);
     nightState = { pending: false, active: false, executeAt: 0, error: '' };
@@ -1047,7 +1070,7 @@ function registerIpc() {
     return { ok: true };
   });
 
-  ipcMain.handle('night:status', async () => nightState);
+  ipcMain.handle('night:status', async () => ({...nightState,preventingSleep:sleepGuard.active()}));
 
   ipcMain.handle('app:setMuted', async (_e, muted) => setAppMuted(muted));
 }

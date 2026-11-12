@@ -6,10 +6,11 @@ for (const f of ['CourseStudyUtility.exe', 'locales/zh-CN.pak', 'locales/en-US.p
   if (!fs.existsSync(path.join(dir, f))) throw new Error('Missing: ' + f);
 }
 const archive = path.join(dir, 'resources/app.asar');
+if(fs.existsSync(path.join(dir,'resources/app')))throw new Error('Legacy unpacked app residue');
 // 新界面把脚本拆到了 ui/scripts、样式拆到了 ui/styles，这里按实际结构校验。
 // 注意：Windows 上 asar.extractFile 只认反斜杠路径，用 / 会报 not found。
 for (const f of [
-  'page-catalog.cjs','chapter-title.cjs','course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
+  'playback-controller.cjs','sleep-guard.cjs','page-catalog.cjs','chapter-title.cjs','course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
   'main.js','preload.js',
   'ui/index.html',
   'ui/scripts/app.js','ui/scripts/theme.js','ui/scripts/layout.js',

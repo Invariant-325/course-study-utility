@@ -9,6 +9,15 @@ function numericVersion(v) {
 }
 
 module.exports = async ctx => {
+  // A reused local Electron runtime can contain an old resources/app tree.
+  // Remove it only inside this resolved build output; app.asar is authoritative.
+  const output=fs.realpathSync(ctx.appOutDir);
+  const legacy=path.join(output,'resources','app');
+  if(fs.existsSync(legacy)){
+    const resolved=fs.realpathSync(legacy);
+    if(!resolved.startsWith(output+path.sep))throw new Error('Legacy app escaped build output');
+    fs.rmSync(legacy,{recursive:true,force:true});
+  }
   for (const locale of ['zh-CN','en-US']) {
     if (!fs.existsSync(path.join(ctx.appOutDir,'locales',locale+'.pak'))) throw new Error('Missing locale '+locale);
   }
