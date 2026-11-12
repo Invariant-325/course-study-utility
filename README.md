@@ -1,35 +1,66 @@
-# 课程伴学工具
+<div align="center">
+  <img src="docs/images/logo.png" width="80" height="80" alt="课程伴学工具 Logo">
+  <h1>课程伴学工具</h1>
+  <p>兼容学习通（超星平台）的 Windows 课程辅助工具。</p>
+  <p>在一个窗口里选课、查看章节进度，安排视频与习题。<br>需要题目辅助时，在设置中填写自己的模型密钥。</p>
+  <p>Windows 10 / 11 · x64 · 开源免费 · GPL-3.0-only</p>
+  <p>
+    <a href="https://github.com/Invariant-325/course-study-utility/releases/latest"><strong>下载最新稳定版</strong></a> ·
+    <a href="CHANGELOG.md">查看更新日志</a> ·
+    <a href="https://github.com/Invariant-325/course-study-utility/issues">反馈问题</a>
+  </p>
+  <p><sub>当前正式版：v0.2.7 · <a href="https://github.com/Invariant-325/course-study-utility/releases">测试版与历史版本</a></sub></p>
+</div>
 
-当前推荐版本 **0.2.7**，主要修复课程进度读取、视频与习题衔接，以及视觉做题返回答案后仍报失败的问题。完整变化见 [更新记录](CHANGELOG.md)。
+## 软件预览
 
-Windows 桌面课程辅助工具，兼容学习通（超星平台）。支持课程管理、章节任务跟踪、视频学习辅助，以及由用户配置模型的 AI 视觉识题与作答。
+![课程主页：课程列表、封面与章节进度](docs/images/home.png)
 
-**[下载 0.2.7](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.7)** · [历史版本](https://github.com/Invariant-325/course-study-utility/releases) · [更新记录](CHANGELOG.md)
+<details>
+<summary>查看学习工作区：章节状态与接下来要做的任务</summary>
 
-0.2.0 系列完成了主要界面重构：从网页控制面板调整为侧栏与独立工作区，加入主题配色、课程列表、任务状态、统计与托盘操作；随后接入后台选课和扫码验证。各阶段 Beta 保留在历史版本中。0.2.1 继续完善课程展示、设置、进度和交互。
+![学习工作区：章节目录、学习策略与任务顺序](docs/images/workspace.png)
 
-## 功能
+</details>
 
-- 后台读取课程，在主页选课；显示平台二维码，由本人在手机完成验证后继续。
-- 显示课程封面、账号昵称与头像。进入课程后读取平台目录进度，章节变化自动同步到主页。
-- 章节用绿、黄、红、灰区分完成、部分完成、未完成和未知状态；视频和习题分开列出。
-- AI 直接读取浏览器题目截图，保留网页字体、图片和公式；自动提交由设置控制。
-- 模型配置、网页默认静音、日志和启动时检查更新集中到设置。静音仅作用于应用内网页。
-- 支持明暗主题与配色、当前课程强调、可拖动侧栏宽度，并保存布局。
-- 保留“网页”按钮处理登录及暂未适配的页面；关于页面提供项目链接与基本声明。
+<sub>真实 Electron 界面截图；隔离测试环境中的课程封面、名称和进度均为示例数据，不含个人账号。</sub>
 
-## 使用
+## 用它做什么
 
-1. 下载 `CourseStudyUtility-0.2.7-Setup-x64.exe`。升级前从托盘退出旧程序，再运行安装包。
-2. 首次登录使用顶部“网页”入口，按平台要求登录。课程验证二维码可在主界面查看。
-3. 在主页选择课程。需要 AI 功能时，在设置中配置支持视觉输入的模型和 API Key，模型费用由对应服务商收取。
-4. 拖动侧栏右侧分隔线调整宽度，双击恢复默认。检查更新会打开 GitHub 下载页，不自动安装。
+**课程与进度**<br>
+在主页找到课程，进入后读取章节目录。已读取的进度会保存在本地，回到主页也能接着查看。
 
-平台页面变化可能影响课程读取，无法识别的页面可使用“网页”入口处理。AI 结果需自行核对。
+**学习工作区**<br>
+视频和习题分开显示，章节完成情况用颜色区分。选择学习策略后，可以看到接下来要处理的任务顺序。
 
-## 开发
+**AI 题目辅助**<br>
+调用模型读取题目截图，给出答案并填写。自动做题和自动提交分别控制，答案仍需自行核对。
 
-源码入口为 `desktop/main.js`，界面位于 `desktop/ui`，课程脚本位于 `userscript`。需要 Node.js、npm 和 Windows 构建环境。
+**按你的习惯**<br>
+切换明暗主题和配色，拖动侧栏调整宽度。需要平台原网页时，点顶部的“网页”即可打开。
+
+**桌面常用操作**<br>
+收进系统托盘、让课程网页静音，或开启夜间模式倒计时息屏。播放时长和模型调用统计也在应用里查看。
+
+## 快速开始
+
+1. [下载最新稳定版](https://github.com/Invariant-325/course-study-utility/releases/latest)，选择 `Setup-x64.exe` 安装程序。更新前先从系统托盘退出旧程序。
+2. 启动应用，通过顶部“网页”入口按平台要求登录。课程要求刷脸时，用本人手机完成二维码验证。
+3. 在主页选择课程，进入学习工作区，选择学习方式后开始。
+
+需要 AI 功能时，点左下角头像进入**设置**，填写自己的 DeepSeek API Key。当前版本使用内置的模型服务。模型 API 费用由服务商收取，软件不捆绑付费模型订阅。
+
+平台页面变化可能影响课程读取，暂未适配的操作可通过“网页”入口完成。
+
+## 开发与开源
+
+由 [Invariant-325](https://github.com/Invariant-325) 维护，使用 DeepSeek 与 Codex 辅助开发。桌面端使用 Electron，界面与课程脚本使用 JavaScript、HTML 和 CSS。
+
+- [`desktop/`](desktop/)：桌面程序与界面，入口为 `main.js`，界面位于 `ui/`。
+- [`userscript/`](userscript/)：课程页面脚本及构建入口。
+- [`desktop/BUILD.md`](desktop/BUILD.md)：本地构建、离线依赖、打包与校验说明。
+
+安装 Node.js 与 npm 后，在仓库根目录运行：
 
 ```powershell
 cd desktop
@@ -37,12 +68,12 @@ npm ci
 npm start
 ```
 
-构建使用 Electron 33.4.11、electron-builder 25.1.8 和 NSIS。`build.electronDist` 指向 `desktop/vendor/electron/dist`，离线构建前需将同版本 Electron 运行时放入该目录。设置 `CHAOXING_RCEDIT` 为 rcedit 可执行文件路径以写入 EXE 图标和版本资源，然后运行 `npm run dist`、`npm run verify:package`。
+问题反馈到 [Issues](https://github.com/Invariant-325/course-study-utility/issues)，附上应用版本、复现步骤和报错。日志中的账号、API Key、Cookie 与登录参数须脱敏。
 
-项目由 Invariant-325 维护和发布，使用 DeepSeek 和 Codex 辅助编程、调试与打包。Issue 需包含应用版本、复现步骤、预期行为、实际结果和错误日志。密码、API Key、Cookie 及登录回调参数须脱敏。
+项目采用 [GPL-3.0-only](LICENSE)，分发修改版时需按许可证提供对应源码。
 
-## 许可与兼容声明
+## 声明
 
-采用 [GPL-3.0-only](LICENSE)。分发修改版或衍生作品时，需按许可提供对应源码及许可文本。其他资源适用其各自许可。
+本项目是兼容学习通（超星平台）的个人第三方工具，与相关平台不存在官方合作或授权关系。使用时需遵守平台规则及所属机构要求。
 
-这是个人第三方兼容工具，并非学习通或超星开发的产品，与相关平台无隶属、授权、合作或背书关系。相关名称仅用于说明兼容性。使用者需遵守平台规则及所属机构要求，身份验证由本人完成。更多内容见 [开源声明](OPEN_SOURCE.md) 和 [免责声明](DISCLAIMER.md)。
+[许可证](LICENSE) · [开源声明](OPEN_SOURCE.md) · [免责声明](DISCLAIMER.md)
