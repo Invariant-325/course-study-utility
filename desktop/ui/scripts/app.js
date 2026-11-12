@@ -477,14 +477,14 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'正在核对课程状态',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已加载':'正在读取课程';
+      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'学习已中断',working:'正在处理测验',waiting:'等待习题处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已加载':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'正在核对课程状态',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
+    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',review:'学习已中断',working:'正在处理测验',waiting:'等待习题处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
@@ -503,13 +503,7 @@ function bindAccount() {
     if (!MODEL.hasKey) {
       issues.push({ kind: 'warn', title: '还没填写模型密钥', fix: '在头像菜单的设置中填写模型密钥。' });
     }
-    if (onCourse && s.state === 'blocked') {
-      issues.push({ kind: 'error', title: '学习暂时停住了', fix: '可先刷新进度，再点重试；问题记录在设置中。' });
-    }
-    if (onCourse && s.state === 'awaitingConfirm') {
-      issues.push({ kind: 'warn', title: '等待人工确认', fix: '平台未确认完成，可点继续重试或停止跳过' });
-    }
-    if(onCourse&&['needsReview','blocked','awaitingConfirm'].includes(s.state)){const rawReason=d.reason||s.completion?.reasons?.join('; ')||s.lastError||'';const reason=/frame|catalog-unknown|unknown-state|无法判定|证据不足/.test(rawReason)?'还没查到准确进度。刷新后重试，或打开课程网页查看。':/未提交|提交|测验/.test(rawReason)?'本章习题还没完成或提交，请先处理习题。':'课程网站还没有确认完成。刷新进度后再试。';issues.push({kind:'warn',title:'任务尚未恢复',fix:reason});if(nowChapter)nowChapter.textContent=reason;}
+    if(onCourse&&['needsReview','blocked','awaitingConfirm'].includes(s.state)){const rawReason=d.reason||s.awaitingReason||s.completion?.reasons?.join('; ')||s.lastError||'';const reason=/frame|catalog-unknown|unknown-state|无法判定|证据不足/.test(rawReason)?'还没查到准确进度。刷新后重试，或打开课程网页查看。':/未提交|提交|测验/.test(rawReason)?'本章习题还没完成或提交，请先处理习题。':'课程网站还没有确认完成。刷新进度后再试。';issues.push({kind:'warn',title:s.state==='awaitingConfirm'?'本章习题等待处理':'本章学习已停止',fix:rawReason||reason});if(nowChapter)nowChapter.textContent=rawReason||reason;}
     ISSUES = issues;
   }
 
@@ -588,14 +582,17 @@ function bindAccount() {
   // ---------------- FAB ----------------
   let playing = false;
 
-  let actionBusy=false;
+  let actionBusy=false,platformWebVisible=false;
+  async function setPlatformWeb(force){const result=await App.toggleWeb(force);platformWebVisible=!!result.visible;const label=$('#webPillLabel');if(label)label.textContent=platformWebVisible?'隐藏网页':'网页';updateFab();return result;}
   function controlAction(){return RUNNER.mode==='preparing'?'pause':RUNNER.mode==='working'?'pause':playing?'pause':['paused','waiting','review'].includes(RUNNER.mode)||['paused','blocked','needsReview','awaitingConfirm','quizWait'].includes(RUNNER.snap?.state)?'resume':'start';}
   function updateFab() {
-    const action=controlAction(),label=RUNNER.mode==='review'?'重试':RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
+    const action=controlAction(),label=RUNNER.mode==='review'?'重新检查本章':RUNNER.mode==='waiting'?(/习题|测验/.test(RUNNER.reason||RUNNER.snap?.awaitingReason||'')?'继续处理习题':'重新检查任务'):RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
     const icon=action==='pause'?'<path d="M9 5v14M15 5v14"/>':'<path d="M8 5l11 7-11 7z"/>';
-    const fab=$('#fab');if(fab){fab.style.display=['settings','about'].includes(currentPage)?'none':'inline-flex';fab.classList.toggle('is-playing',action==='pause');}
+    const fab=$('#fab');if(fab){fab.style.display='none';fab.classList.toggle('is-playing',action==='pause');}
     if($('#fabLabel'))$('#fabLabel').textContent=label;
     for(const id of ['fab','sideStart','nowToggle','wkPause']){const button=$('#'+id);if(!button)continue;button.disabled=actionBusy||!!RUNNER.busy;button.title=label;button.setAttribute('aria-label',label);if(id==='fab'){button.querySelector('svg').innerHTML=icon;}else button.innerHTML='<svg viewBox="0 0 24 24">'+icon+'</svg>'+label;}
+    if($('#sideStart'))$('#sideStart').style.display=currentPage==='workspace'&&!platformWebVisible?'none':'';
+    if($('#wkPause'))$('#wkPause').style.display='none';
     if($('#wkStop'))$('#wkStop').disabled=actionBusy;
   }
 
@@ -916,7 +913,7 @@ function bindAccount() {
       btnMore.addEventListener('click', async () => {
         try {
           if (App && typeof App.toggleWeb === 'function') {
-            const r = await App.toggleWeb();const label=$('#webPillLabel');if(label)label.textContent=r.visible?'隐藏网页':'网页';
+            await setPlatformWeb();
             snack(r && r.visible ? '已显示网页（用于登录 / 扫码）' : '已隐藏网页，自动化继续在后台运行');
           } else {
             snack('预览模式：正式版这里会切换网页显示');
@@ -1074,8 +1071,8 @@ function bindAccount() {
     App?.onCourseChanged?.(()=>refreshLiveOverview().catch(()=>{}));
     bindLearning().catch(()=>snack("学习偏好加载失败"));
     bindProduct().catch(()=>{});
-    $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
-    $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
+    $('#showVerificationWeb')?.addEventListener('click',()=>setPlatformWeb(true));
+    $('#hidePlatformWeb')?.addEventListener('click',()=>setPlatformWeb(false));
     updateFab();
 
     // 再把真实数据补上（带超时，失败也不影响交互）

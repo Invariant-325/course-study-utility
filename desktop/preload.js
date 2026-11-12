@@ -113,6 +113,7 @@ if (isAppUi) {
   });
 } else {
   contextBridge.exposeInMainWorld('__cxHost', {
+    chapterQuiz:request=>ipcRenderer.invoke('quiz:chapter',request),
     kvGet(key, fallback) {
       try {
         return ipcRenderer.sendSync('kv:get', String(key), fallback);
@@ -157,7 +158,7 @@ if (isAppUi) {
       if(event.source&&data?.channel==='cx-course-progress'){ipcRenderer.send('course:domChanged');return;}
       if (event.source === window || !event.source || !data || data.channel !== 'cx-host-request') return;
       if (typeof data.id !== 'string' || data.id.length > 100 || !Array.isArray(data.args)) return;
-      const channels = { askVision: 'vision:ask', visionStatus: 'vision:status', xhr: 'net:xhr' };
+      const channels = { askVision: 'vision:ask', visionStatus: 'vision:status', chapterQuiz:'quiz:chapter', xhr: 'net:xhr' };
       try {
         let result;
         if (data.method === 'kvSet') {

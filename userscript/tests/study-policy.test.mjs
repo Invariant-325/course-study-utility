@@ -19,7 +19,7 @@ test('默认自动策略，本章仍有测验时不得跳到后章',async()=>{
  assert.equal(Config.get('studyStrategy'),'auto');
  CourseTree.enumerateDetail=()=>({jobs:[{id:'work',state:'unfinished',type:'work'}],inaccessible:[],stats:{unfinished:1,unknown:0,finished:0,documentCount:1}});
  CourseTree.pickNextVideoTarget=()=>({job:null});CourseTree.catalogProgress=()=>({items:[{active:true,pending:1}],ok:true,unknown:0,pending:1});CourseTree.clickNextCatalogItem=()=>{advanced++;return {ok:true}};
- try{Runner.start();await new Promise(r=>setTimeout(r,1200));assert.equal(advanced,0);assert.equal(Runner.state(),'needsReview');}finally{Runner.stop();e.window.close()}
+ try{Runner.start();await new Promise(r=>setTimeout(r,1200));assert.equal(advanced,0);assert.equal(Runner.state(),'awaitingConfirm');assert.match(Runner.snapshot().awaitingReason,/自动做题已关闭/);}finally{Runner.stop();e.window.close()}
 });
 test('网页切章后解除旧自动调度而不暂停新播放器',async()=>{
  const e=loadEnv(files);const {Runner,CourseTree,VideoCtl}=e.exports;let active='第一章',paused=0;

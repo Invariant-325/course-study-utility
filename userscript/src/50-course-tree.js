@@ -403,6 +403,16 @@ const CourseTree = (function () {
     return { ok: false, reason: 'no-handle' };
   }
 
+  function openQuizTab(){
+    const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:document}];
+    for(const {doc} of docs)for(const node of doc.querySelectorAll('a,button,[role=tab],.prev_white,.prev_title,.prev_list li')){
+      const label=Dom.textOf(node,80).replace(/\s+/g,'');
+      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题)$/.test(label))continue;
+      if(Dom.click(node))return {ok:true,by:'chapter-quiz-tab'};
+    }
+    return {ok:false,reason:'no-quiz-tab'};
+  }
+
   // ---------- 目录 ----------
   function catalogEntries() {
     const topDoc = window.document;
@@ -535,7 +545,8 @@ const CourseTree = (function () {
     const topDoc = window.document;
     let nodes = [];
     try {
-      nodes = Dom.toArray(topDoc.querySelectorAll(SEL.taskTabSelector));
+      const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:topDoc}];
+      nodes=docs.flatMap(({doc})=>Dom.toArray(doc.querySelectorAll(SEL.taskTabSelector)));
     } catch (e) {
       nodes = [];
     }
@@ -637,7 +648,7 @@ const CourseTree = (function () {
     findVideoInJob,
     pickNextVideoTarget,
     findPendingWorkJobs,
-    openWorkJob,
+    openWorkJob,openQuizTab,
     catalogEntries,
     catalogProgress,
     readCatalogPending,readCatalogState,

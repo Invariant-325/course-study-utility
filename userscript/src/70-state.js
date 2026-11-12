@@ -10,7 +10,7 @@
 const StateMachine = (function () {
   const TRANSITIONS = {
     idle: ['locating', 'stopped'],
-    locating: ['playing', 'settling', 'advancing', 'blocked', 'needsReview', 'paused', 'stopped', 'awaitingConfirm'],
+    locating: ['quizWait', 'playing', 'settling', 'advancing', 'blocked', 'needsReview', 'paused', 'stopped', 'awaitingConfirm'],
     playing: ['settling', 'paused', 'blocked', 'stopped', 'locating', 'quizWait', 'needsReview'],
     settling: ['advancing', 'awaitingConfirm', 'blocked', 'paused', 'stopped'],
     awaitingConfirm: ['advancing', 'settling', 'locating', 'blocked', 'paused', 'stopped', 'needsReview'],

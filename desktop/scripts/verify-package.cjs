@@ -10,7 +10,7 @@ if(fs.existsSync(path.join(dir,'resources/app')))throw new Error('Legacy unpacke
 // 新界面把脚本拆到了 ui/scripts、样式拆到了 ui/styles，这里按实际结构校验。
 // 注意：Windows 上 asar.extractFile 只认反斜杠路径，用 / 会报 not found。
 for (const f of [
-  'catalog-progress.cjs','manual-quiz.cjs','playback-controller.cjs','sleep-guard.cjs','page-catalog.cjs','chapter-title.cjs','course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
+  'chapter-quiz-bridge.cjs','catalog-progress.cjs','manual-quiz.cjs','playback-controller.cjs','sleep-guard.cjs','page-catalog.cjs','chapter-title.cjs','course-portal.cjs','browser-policy.cjs','login-session.cjs','course-browser.cjs','frame-bridge.cjs',
   'main.js','preload.js',
   'ui/index.html',
   'ui/scripts/study-plan.js','ui/scripts/app.js','ui/scripts/theme.js','ui/scripts/layout.js',

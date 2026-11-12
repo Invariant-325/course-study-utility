@@ -15,8 +15,8 @@ function createPlaybackController({browser,portal}){
   const runner=values.map(v=>v.runner).filter(Boolean).sort((a,b)=>score(b)-score(a))[0]||null;
   const video=values.map(v=>v.video).find(v=>v&&!v.paused&&!v.ended)||values.map(v=>v.video).find(Boolean)||runner?.video||null;
   const state=runner?.state||'idle',pending=portal.status().pendingStart;
-  const mode=video&&!video.paused&&!video.ended?'playing':pending?'preparing':['locating','settling','advancing'].includes(state)?'preparing':video?.paused&&!video.ended&&state==='playing'?'paused':state==='playing'?'playing':['blocked','needsReview','awaitingConfirm'].includes(state)?'review':state==='paused'?'paused':state==='quizWait'&&runner?.running?'working':['quizWait','awaitingConfirm'].includes(state)?'waiting':'idle';
-  return {ok:true,runner,video,mode,busy,reason:runner?.lastError||runner?.completion?.reasons?.join('; ')||runner?.blockedReason||''};
+  const mode=video&&!video.paused&&!video.ended?'playing':pending?'preparing':['locating','settling','advancing'].includes(state)?'preparing':video?.paused&&!video.ended&&state==='playing'?'paused':state==='playing'?'playing':state==='awaitingConfirm'?'waiting':['blocked','needsReview'].includes(state)?'review':state==='paused'?'paused':state==='quizWait'&&runner?.running?'working':['quizWait','awaitingConfirm'].includes(state)?'waiting':'idle';
+  return {ok:true,runner,video,mode,busy,reason:runner?.awaitingReason||runner?.lastError||runner?.completion?.reasons?.join('; ')||runner?.blockedReason||runner?.noteReason||''};
  }
  async function command(action){
   if(busy)return {ok:false,error:'操作正在执行'};

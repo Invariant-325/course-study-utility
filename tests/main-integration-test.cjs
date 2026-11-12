@@ -6,7 +6,8 @@ app.whenReady().then(async()=>{try{
  const ses=session.fromPartition('persist:chaoxing');
  await ses.protocol.handle('https',req=>{
   const url=new URL(req.url);let html;
-  if(url.pathname==='/base')html='<span id="personalName">Fixture User</span><ul id="courseList"><li><a href="/mycourse/stu?courseid=1&clazzid=9">Integration course</a></li></ul>';
+  if(url.hostname==='quiz.chaoxing.com')html=`<script>window.__cxUserscriptLoaded=true;window.__cxChapterQuiz={detect:()=>({isQuizPage:true}),parse:()=>({count:1}),runner:{runAuto:async options=>({ok:true,phase:options.submit?'submitted':'filled',receivedSubmit:options.submit}),stop:()=>true}};</script>`;
+  else if(url.pathname==='/base')html='<span id="personalName">Fixture User</span><ul id="courseList"><li><a href="/mycourse/stu?courseid=1&clazzid=9">Integration course</a></li></ul>';
   else if(url.pathname==='/mycourse/stu')html='<iframe src="/mycourse/catalog"></iframe>';
   else if(url.pathname==='/mycourse/catalog')html='<p>已完成任务点：19/59</p><div class="chapter_item"><h3 onclick="parent.location=\'/mycourse/studentstudy\'" title="1.1 章节标题">1.1 章节标题</h3><span class="catalog_points">2</span></div>';
   else html=`<script>window.__cxUserscriptLoaded=true;window.starts=0;window.__cxNaturalWatchApp={tree:{catalogEntries:()=>({items:[]}),catalogProgress:()=>({items:[]}),enumerate:()=>[],readCatalogSummary:()=>null},runner:{snapshot:()=>({state:starts?'playing':'idle'}),start:()=>{starts++}}}</script>`;
@@ -43,6 +44,13 @@ app.whenReady().then(async()=>{try{
  const scheduled=await ui('window.__cxApp.nightSchedule(30000)');assert(scheduled.ok);assert((await ui('window.__cxApp.nightStatus()')).preventingSleep);assert(scheduled.executeAt-Date.now()>29000);assert((await ui('window.__cxApp.nightStatus()')).pending);
  await ui('window.__cxApp.nightCancel()');assert.equal((await ui('window.__cxApp.nightStatus()')).pending,false);
  console.log('PASS real night IPC schedules 30 seconds and cancels immediately; monitor command never executes');
+ await web.executeJavaScript(`window.__cxNaturalWatchApp.tree.activeCatalogKey=()=> '2.2 当前章节';const tab=document.createElement('button');tab.className='prev_title';tab.textContent='2 章节测验';tab.onclick=()=>{window.quizTabOpened=true};document.body.append(tab);const quizFrame=document.createElement('iframe');quizFrame.src='https://quiz.chaoxing.com/work/doHomeWorkNew';document.body.append(quizFrame);true`);await pause(350);
+ await ui('window.__cxApp.learningPreferences({quizGateEnabled:true,quizAutoSubmit:false})');
+ const tabs=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"tabs",chapter:"2.2 当前章节"})')+')');assert(tabs.result.tabs.quiz);const opened=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"open",chapter:"2.2 当前章节"})')+')');assert(opened.result.opened);assert(await web.executeJavaScript('window.quizTabOpened'));
+ const quizStatus=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"status",chapter:"2.2 当前章节"})')+')');assert(quizStatus.result.ready);
+ const quizRun=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"run",chapter:"2.2 当前章节",submit:true})')+')');assert.equal(quizRun.result.phase,'filled');assert.equal(quizRun.result.receivedSubmit,false);
+ const wrong=await ui('window.__cxApp.evalMain('+JSON.stringify('window.__cxHost.chapterQuiz({action:"run",chapter:"另一章节",submit:true})')+')');assert.equal(wrong.result.ok,false);
+ console.log('PASS real main/preload cross-origin quiz bridge, selected-chapter guard and global submit-off respected');
  await pause(300);const store=JSON.parse(fs.readFileSync(path.join(app.getPath('userData'),'store.json')));assert(store.courseProgressByAccount);
  await ui('setTimeout(()=>window.__cxApp.windowControl("quit"),100);true');
  }catch(e){console.error(e.stack);app.exit(1)}});

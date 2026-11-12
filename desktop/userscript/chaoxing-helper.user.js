@@ -1233,6 +1233,16 @@ const CourseTree = (function () {
     return { ok: false, reason: 'no-handle' };
   }
 
+  function openQuizTab(){
+    const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:document}];
+    for(const {doc} of docs)for(const node of doc.querySelectorAll('a,button,[role=tab],.prev_white,.prev_title,.prev_list li')){
+      const label=Dom.textOf(node,80).replace(/\s+/g,'');
+      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题)$/.test(label))continue;
+      if(Dom.click(node))return {ok:true,by:'chapter-quiz-tab'};
+    }
+    return {ok:false,reason:'no-quiz-tab'};
+  }
+
   // ---------- 目录 ----------
   function catalogEntries() {
     const topDoc = window.document;
@@ -1365,7 +1375,8 @@ const CourseTree = (function () {
     const topDoc = window.document;
     let nodes = [];
     try {
-      nodes = Dom.toArray(topDoc.querySelectorAll(SEL.taskTabSelector));
+      const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:topDoc}];
+      nodes=docs.flatMap(({doc})=>Dom.toArray(doc.querySelectorAll(SEL.taskTabSelector)));
     } catch (e) {
       nodes = [];
     }
@@ -1467,7 +1478,7 @@ const CourseTree = (function () {
     findVideoInJob,
     pickNextVideoTarget,
     findPendingWorkJobs,
-    openWorkJob,
+    openWorkJob,openQuizTab,
     catalogEntries,
     catalogProgress,
     readCatalogPending,readCatalogState,
@@ -2523,7 +2534,7 @@ const Llm = (function () {
 const StateMachine = (function () {
   const TRANSITIONS = {
     idle: ['locating', 'stopped'],
-    locating: ['playing', 'settling', 'advancing', 'blocked', 'needsReview', 'paused', 'stopped', 'awaitingConfirm'],
+    locating: ['quizWait', 'playing', 'settling', 'advancing', 'blocked', 'needsReview', 'paused', 'stopped', 'awaitingConfirm'],
     playing: ['settling', 'paused', 'blocked', 'stopped', 'locating', 'quizWait', 'needsReview'],
     settling: ['advancing', 'awaitingConfirm', 'blocked', 'paused', 'stopped'],
     awaitingConfirm: ['advancing', 'settling', 'locating', 'blocked', 'paused', 'stopped', 'needsReview'],
@@ -2720,6 +2731,7 @@ const Runner = (function () {
       advanceGuard: R.advanceGuard,
       awaitingSince: R.awaitingSince,
       awaitingTries: R.awaitingTries,
+      awaitingReason:R.awaitingReason,
       completion: R.completion,
       quiz: typeof QuizRunner !== 'undefined' ? QuizRunner.snapshot() : null,
     };
@@ -2861,6 +2873,7 @@ const Runner = (function () {
   // 证据不足导致无法确认完成：这是"不确定"，不是"失败"，也不是"完成"
   function enterNeedsReview(reason, completion) {
     stopAll();
+    R.awaitingReason=reason;
     if (completion) R.completion = completion;
     Log.warn('无法确认完成：' + reason);
     R.reviewCatalogSignature=JSON.stringify(CourseTree.catalogProgress().items);
@@ -3175,6 +3188,7 @@ const Runner = (function () {
       if (isStale(token)) return false;
       try {
         if (typeof ChapterQuizRunner !== 'undefined' && ChapterQuizRunner.isQuizPage()) return true;
+        if(window.__cxHost?.chapterQuiz){const status=await window.__cxHost.chapterQuiz({action:'status',chapter:CourseTree.activeCatalogKey?.()||''});if(status?.ready)return true;}
       } catch (e) {
         /* ignore */
       }
@@ -3200,8 +3214,20 @@ const Runner = (function () {
     if (typeof ChapterQuizRunner === 'undefined') return 'off';
 
     const rawPending = CourseTree.findPendingWorkJobs(jobs);
-    const pending=rawPending.filter(j=>!R.handledWork.has(j.stableKey||j.id));
+    let pending=rawPending.filter(j=>!R.handledWork.has(j.stableKey||j.id));
     if(rawPending.length&&!pending.length){enterQuizManual('测验已提交，等待平台确认；刷新进度后继续，避免重复作答');return 'blocked';}
+    let openedTab=false,hostReady=false;
+    if(!pending.length&&!CourseTree.currentCatalogComplete?.()){
+      let tabs=CourseTree.readTaskTabs?.()||{};const videos=jobs.filter(j=>j.type==='video');
+      if(window.__cxHost?.chapterQuiz){if(!tabs.quiz){const read=await window.__cxHost.chapterQuiz({action:'tabs',chapter:CourseTree.activeCatalogKey?.()||''});tabs=read?.tabs||tabs;}hostReady=(await window.__cxHost.chapterQuiz({action:'status',chapter:CourseTree.activeCatalogKey?.()||''}))?.ready===true;}
+      const ready=ChapterQuizRunner.isQuizPage()||hostReady;
+      if(ready||(tabs?.quiz&&videos.length&&videos.every(j=>j.state==='finished'))){
+        if(!ready){let opened=CourseTree.openQuizTab?.();if(!opened?.ok&&window.__cxHost?.chapterQuiz){const result=await window.__cxHost.chapterQuiz({action:'open',chapter:CourseTree.activeCatalogKey?.()||''});opened={ok:result?.opened===true};}if(!opened?.ok)return 'none';openedTab=true;}
+        const key='chapter-quiz:'+(CourseTree.activeCatalogKey?.()||'current');
+        if(R.handledWork.has(key)){enterQuizManual('本章习题已提交，正在等待平台更新完成状态');return 'blocked';}
+        pending=[{id:key,stableKey:key,type:'work',state:'unfinished'}];
+      }
+    }
     if (!pending.length) return 'none';
 
     Log.info('本节还有 ' + pending.length + ' 个未完成章节测验，先做完再继续');
@@ -3210,13 +3236,13 @@ const Runner = (function () {
 
     let onQuizPage = false;
     try {
-      onQuizPage = ChapterQuizRunner.isQuizPage();
+      onQuizPage = ChapterQuizRunner.isQuizPage()||hostReady;
     } catch (e) {
       onQuizPage = false;
     }
 
     if (!onQuizPage) {
-      const opened = CourseTree.openWorkJob(pending[0]);
+      const opened = openedTab?{ok:true,by:'chapter-quiz-tab'}:CourseTree.openWorkJob(pending[0]);
       Log.info('打开测验入口：' + (opened.ok ? opened.by : '失败(' + opened.reason + ')'));
       if (!opened.ok) {
         enterQuizManual('本节有 ' + pending.length + ' 个测验，但找不到可点击入口，请手动完成');
@@ -3233,12 +3259,15 @@ const Runner = (function () {
 
     let result = null;
     try {
-      result = await ChapterQuizRunner.runAuto({
+      const options={
         // 是否自动提交由配置决定；不勾选时只填写，等人工提交
         submit: Config.get('quizAutoSubmit') === true,
         force: false,
         confirmTimeoutMs: 8000,
-      });
+      };
+      if(ChapterQuizRunner.isQuizPage())result=await ChapterQuizRunner.runAuto(options);
+      else if(window.__cxHost?.chapterQuiz)result=await window.__cxHost.chapterQuiz({action:'run',chapter:CourseTree.activeCatalogKey?.()||'',submit:options.submit});
+      else result={ok:false,phase:'detect',error:'no-readable-quiz-frame'};
     } catch (e) {
       result = { ok: false, phase: 'exception', error: String((e && e.message) || e) };
     }
@@ -3305,7 +3334,8 @@ const Runner = (function () {
       const active=CourseTree.catalogProgress().items.find(i=>i.active);
       const jobs=CourseTree.enumerateDetail().jobs;
       if(active?.pending!==0&&(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0)){
-        enterNeedsReview('自动策略：本章仍有未完成或待确认的任务，完成并刷新进度后继续');return;
+        if(Config.get('quizGateEnabled')===false&&jobs.some(j=>j.type==='work'&&j.state!=='finished'))enterQuizManual('本章习题未完成，自动做题已关闭。开启自动做题，或选择章节后点击做题并提交。');
+        else enterNeedsReview('本章仍有未处理的任务，自动切换习题入口失败，请查看课程网页');return;
       }
     }
     // 2) 切换下一节
@@ -3418,6 +3448,7 @@ const Runner = (function () {
           '）'
       );
 
+      if(Config.get('quizGateEnabled')===true){const gate=await processPendingQuiz(token,jobs);if(gate==='blocked')return;if(gate==='handled'){await advance(token);return;}}
       if (!CourseTree.currentCatalogComplete?.()&&detail.stats.unknown > 0 && detail.stats.unfinished === 0) {
         // 有任务点但无法判定完成态：这是证据不足，不是失败
         const completion = evaluateCompletion(detail.jobs, detail.inaccessible);
@@ -3669,6 +3700,7 @@ const Runner = (function () {
     return true;
   }
 
+  function stopHostQuiz(){window.__cxHost?.chapterQuiz?.({action:'stop',chapter:CourseTree.activeCatalogKey?.()||''})?.catch?.(()=>{});}
   function pause() {
     const state = sm.state();
     if (['locating', 'playing', 'settling', 'advancing', 'quizWait'].indexOf(state) === -1) {
@@ -3678,6 +3710,7 @@ const Runner = (function () {
     R.runToken++;
     R.running = false;
     const video = VideoCtl.current();
+    stopHostQuiz();
     stopQuiz();
     stopAll();
     if (video) {
@@ -3716,6 +3749,7 @@ const Runner = (function () {
     R.running = true;
     R.resumeAttempts = 0;
     R.playRejectCount = 0;
+    R.awaitingReason='';R.lastError='';
     Log.info('继续');
     publish();
 
@@ -3741,6 +3775,7 @@ const Runner = (function () {
   function stop() {
     R.runToken++;
     R.running = false;
+    stopHostQuiz();
     stopQuiz();
     const video = VideoCtl.current();
     stopAll();

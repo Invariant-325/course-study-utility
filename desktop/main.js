@@ -72,7 +72,7 @@ let isQuitting = false;
 let win = null;
 let browser = null;
 let coursePortal = null;
-let playbackController=null,manualQuiz=null;
+let playbackController=null,manualQuiz=null,chapterQuizBridge=null;
 const { createCoursePortal } = require('./course-portal.cjs');
 const { cleanChapterTitle } = require('./chapter-title.cjs');
 let loginSession = null;
@@ -228,6 +228,7 @@ async function createWindow() {
   // Use the portal's own course-menu handler after normal platform login.
   coursePortal = createCoursePortal({ browser,getStrategy:()=>{try{return JSON.parse(store['cxNaturalWatch:cfg.studyStrategy']||'"auto"')}catch{return 'auto'}},onActivity:active=>sleepGuard.set('runner',active) });
   playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal});
+  chapterQuizBridge=require('./chapter-quiz-bridge.cjs').createChapterQuizBridge({browser,getPreferences:()=>({quizGateEnabled:store['cxNaturalWatch:cfg.quizGateEnabled']==='true',quizAutoSubmit:store['cxNaturalWatch:cfg.quizAutoSubmit']==='true'})});
   manualQuiz=require('./manual-quiz.cjs').createManualQuiz({browser,portal:coursePortal,playback:playbackController});
   coursePortal.refresh().catch(() => bootLog('course-list-unavailable'));
   win.on('close', event => {
@@ -581,6 +582,7 @@ async function askVision(payload) {
 function registerIpc() {
   ipcMain.handle('playback:status',async()=>{const value=playbackController?await playbackController.status():{ok:false};sleepGuard.set('playback',['playing','preparing','working'].includes(value.mode));return value;});
   ipcMain.handle('playback:command',async(_e,action)=>{if(action==='pause'||action==='stop')await manualQuiz?.cancel();else if(manualQuiz?.status().busy)return {ok:false,error:'正在做本章习题，暂停后再开始学习'};return playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'};});
+  ipcMain.handle('quiz:chapter',async(event,request)=>{if(event.sender!==browser?.view?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,error:'不支持的来源'};return chapterQuizBridge?chapterQuizBridge.invoke(request):{ok:false};});
   ipcMain.handle('quiz:manual',async(_e,chapter)=>{if(!manualQuiz)return {ok:false,error:'先打开课程'};if(manualQuiz.status().busy)return {ok:false,error:'正在做题，请等待完成'};sleepGuard.set('manual-quiz',true);try{return await manualQuiz.start(chapter)}finally{sleepGuard.set('manual-quiz',false)}});
   ipcMain.handle('quiz:manualStatus',()=>manualQuiz?.status()||{busy:false});
   ipcMain.handle('learning:preferences',async (_event,patch)=>{

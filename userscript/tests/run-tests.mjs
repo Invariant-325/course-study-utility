@@ -20,3 +20,4 @@ import './qa-quiz-gate.mjs';
 import './study-policy.test.mjs';
 
 import './catalog-live-progress.test.mjs';
+import './quiz-tab-transition.test.mjs';

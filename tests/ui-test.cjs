@@ -4,7 +4,7 @@ assert.equal(await ev('document.querySelectorAll("#courseGrid .course-card").len
 await click('#btnNight');assert(calls.some(x=>x.type==='night'&&x.value===30000));assert.equal(await ev('document.getElementById("nightCountdown").hidden'),false);assert.equal(await ev('document.getElementById("btnNight").getAttribute("aria-checked")'),'true');assert((await ev('document.getElementById("nightCountdownText").textContent')).includes('秒后息屏'));
 require('node:fs').writeFileSync(require('node:path').join(__dirname,'night-capsule.png'),(await wc.capturePage()).toPNG());
 await click('#cancelNight');assert(calls.some(x=>x.type==='nightCancel'));assert.equal(await ev('document.getElementById("nightCountdown").hidden'),true);console.log('PASS night switch next to web pill shows separate 30-second capsule and cancel; no real monitor action');
-await click('#courseGrid [data-course=a1]');assert(calls.some(x=>x.type==='open'&&x.value==='a1'));await click('#sideStart');assert(calls.some(x=>x.type==='start'));assert.equal(await ev('document.getElementById("verificationPanel").hidden'),false);assert((await ev('document.getElementById("verificationImage").src')).startsWith('data:image/png'));await click('#showVerificationWeb');assert(calls.some(x=>x.type==='web'&&x.value===true));console.log('PASS course selection, QR and native input retained');
+await click('#courseGrid [data-course=a1]');assert(calls.some(x=>x.type==='open'&&x.value==='a1'));await click('#nowToggle');assert(calls.some(x=>x.type==='start'));assert.equal(await ev('document.getElementById("verificationPanel").hidden'),false);assert((await ev('document.getElementById("verificationImage").src')).startsWith('data:image/png'));await click('#showVerificationWeb');assert(calls.some(x=>x.type==='web'&&x.value===true));console.log('PASS course selection, QR and native input retained');
 await ev('window.__cxApp.toggleWeb(false)');await sleep(1600);assert.equal(await ev('document.getElementById("accName").textContent'),'Fixture Account');
 assert.equal(await ev('document.querySelectorAll("#courseGrid [role=progressbar]").length'),2);
 assert.equal(await ev('document.querySelectorAll("#courseGrid [data-selected=true]").length'),1);
@@ -27,7 +27,7 @@ await ev('document.getElementById("defaultWebMuted").checked=false');
 require('node:fs').writeFileSync(require('node:path').join(__dirname,'settings-024.png'),(await wc.capturePage()).toPNG());console.log('PASS avatar-only settings, no sidebar About, and switch thumb remains inside track in both states');
 await click('#defaultWebMuted');assert(calls.some(x=>x.type==='prefs'&&x.value?.defaultWebMuted===true));
 await click('#checkUpdateSettings');assert(calls.some(x=>x.type==='update'));assert.equal(await ev('document.getElementById("openUpdate").hidden'),false);
-await click('#tbApp');await click('#appMenu [data-mi=about]');assert((await ev('document.getElementById("aboutVersion").textContent')).includes('0.2.5'));
+await click('#tbApp');await click('#appMenu [data-mi=about]');assert((await ev('document.getElementById("aboutVersion").textContent')).includes('0.2.6'));
 await click('[data-link="https://github.com/Invariant-325"]');assert(calls.some(x=>x.type==='external'));
 await click('[data-nav=dashboard]');
 const grip=await ev('(()=>{const r=document.getElementById("sidebarResize").getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+80}})()');
