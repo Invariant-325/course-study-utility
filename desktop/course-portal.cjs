@@ -1,5 +1,6 @@
 const { createHash } = require('node:crypto');
 const { isPlatformUrl } = require('./browser-policy.cjs');
+const { catalogCode } = require('./page-catalog.cjs');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // These readers run in the platform's own renderer. No authentication result is
@@ -15,7 +16,7 @@ function readCourseLinks() {
     const title = card.querySelector('h3, h4, .course-name, .courseName, a[title]');
     const name = (title?.getAttribute('title') || title?.textContent || a.getAttribute('title') || a.textContent || card.querySelector('img')?.alt || '').replace(/\s+/g, ' ').trim();
     if (!name || /^(课程已结束|进入课程|查看课程)$/.test(name)) return [];
-    const img=card.querySelector('img');let cover=img?.currentSrc||img?.getAttribute('data-original')||img?.getAttribute('data-src')||img?.src||'';try{cover=new URL(cover,location.href).href}catch{cover=''};return [{ url: u.href, name: name.slice(0, 180),cover }];
+    const img=card.querySelector('img');let cover=img?.currentSrc||img?.getAttribute('data-original')||img?.getAttribute('data-src')||img?.src||'';try{if(cover)cover=new URL(cover,location.href).href}catch{cover=''};return [{ url: u.href, name: name.slice(0, 180),cover }];
   });
 }
 function readChallenge() {
@@ -57,7 +58,7 @@ function createCoursePortal({ browser, interval = 1800 }) {
   let profile={name:'',avatar:''};
   let selected = '', pendingStart = false, busy = false, refreshBusy = false, stopped = false;
   let state = { phase:'loading', selected:'', verification:null, error:'', count:0 };
-  const attempted = new Set();
+  const attempted = new Map();
   let openingSince=0;
   function frames() {
     const wc = browser.view?.webContents;
@@ -122,21 +123,39 @@ function createCoursePortal({ browser, interval = 1800 }) {
       if (verification) { openingSince=Date.now();state.phase=verification.kind==='face'?'verification':'login'; return; }
       const wc=browser.view?.webContents;
       if (!wc || wc.isDestroyed()) return;
-      const ready=await wc.executeJavaScript(`(()=>{const a=window.__cxNaturalWatchApp;return {mounted:!!(a?.tree&&a?.runner&&location.pathname.toLowerCase().endsWith('/mycourse/studentstudy')),state:a?.runner?.snapshot?.().state}})()`).catch(()=>({mounted:false}));
+      let ready={mounted:false},studyFrame=null;
+      for(const frame of all){
+        const value=await frame.executeJavaScript(`(()=>{const a=window.__cxNaturalWatchApp;return {mounted:!!(a?.tree&&a?.runner&&location.pathname.toLowerCase().endsWith('/mycourse/studentstudy')),state:a?.runner?.snapshot?.().state}})()`).catch(()=>({mounted:false}));
+        if(value.mounted){ready=value;studyFrame=frame;break;}
+      }
       if (ready.mounted) {
         state.phase=['playing','locating','settling','advancing','quizWait','awaitingConfirm'].includes(ready.state)?'running':'ready'; state.error='';
         if (pendingStart) {
-          pendingStart=false;
-          await wc.executeJavaScript('Promise.resolve(window.__cxNaturalWatchApp.runner.start()).then(()=>true)',true);
-          state.phase='running';
+          const selectedAtStart=selected;
+          const started=await studyFrame.executeJavaScript('Promise.resolve(window.__cxNaturalWatchApp.runner.start()).then(()=>true)',true).catch(()=>false);
+          // Navigation can detach the frame between readiness and execution.
+          // Keep the request pending until the actual call succeeds.
+          if(started&&selected===selectedAtStart){pendingStart=false;state.phase='running';}
         }
       } else if (selected) {
         state.phase='opening';
-        if(Date.now()-openingSince>25000){state.phase='manual';state.error='暂未找到章节学习入口，可显示原网页完成一次课程导航';}
+        let catalogFrame=null,catalog=null;
+        for(const frame of all){const value=await frame.executeJavaScript(catalogCode(),true).catch(()=>null);if(value?.ok){catalog=value;catalogFrame=frame;break;}}
+        if(catalog){state.phase='chapters';state.error='';if(!pendingStart)return;}
+        if(Date.now()-openingSince>25000){state.phase='manual';state.error='未能打开章节，可在主界面重试或显示网页查看';}
+        if(catalog&&pendingStart){
+          const key=catalogFrame.url,attempt=attempted.get(key);
+          if(attempt&&Date.now()-attempt.at<4000)return;
+          if(attempt?.count>=3){state.phase='manual';state.error='章节打开失败，可重新选择章节重试';return;}
+          const result=await catalogFrame.executeJavaScript(catalogCode({}),true).catch(()=>({ok:false}));
+          if(result.reason==='no-pending-chapter'){pendingStart=false;state.phase='complete';return;}
+          attempted.set(key,{at:Date.now(),count:(attempt?.count||0)+1});return;
+        }
         for (const frame of all) {
           const key=frame.url;
-          if(attempted.has(key))continue;
-          if(await read(frame,enterStudyPage).catch(()=>false)) { attempted.add(key); break; }
+          const attempt=attempted.get(key);
+          if(attempt&&(Date.now()-attempt.at<4000||attempt.count>=3))continue;
+          if(await read(frame,enterStudyPage).catch(()=>false)) { attempted.set(key,{at:Date.now(),count:(attempt?.count||0)+1}); break; }
         }
       } else state.phase=courses.size?'catalog':'login';
     } catch { state.error='后台读取暂时失败，可重新读取或显示原网页处理'; }
@@ -145,7 +164,20 @@ function createCoursePortal({ browser, interval = 1800 }) {
   const timer=setInterval(tick,interval); timer.unref?.();
   return {
     async list() { await tick(); return {ok:true,courses:[...courses.values()].map(({id,name,cover})=>({id,name,cover})),state:{...state},profile:{...profile}}; },
-    status() { return {...state}; },
+    status() { return {...state,...(browser.info?.().error?{error:browser.info().error}:{})}; },
+    async overview() {
+      for(const frame of frames()){try{const data=await frame.executeJavaScript(catalogCode(),true);if(data?.ok)return data;}catch{}}
+      return {ok:false,reason:'no-catalog'};
+    },
+    async openChapter(chapter) {
+      if(!selected)return {ok:false,error:'先选择课程'};
+      if(!chapter||typeof chapter.key!=='string'||typeof chapter.title!=='string')return {ok:false,error:'章节参数无效'};
+      for(const frame of frames()){
+        const result=await frame.executeJavaScript(catalogCode({key:chapter.key,title:chapter.title}),true).catch(()=>null);
+        if(result?.ok){attempted.clear();openingSince=Date.now();state.phase='opening';state.error='';return {ok:true};}
+      }
+      return {ok:false,error:'章节列表已变化，请重新读取后再试'};
+    },
     async refresh() {
       if(refreshBusy)return {ok:false,error:'正在读取课程'};
       if(pendingStart||state.phase==='running')return {ok:false,error:'任务执行中，停止后再刷新课程列表'};

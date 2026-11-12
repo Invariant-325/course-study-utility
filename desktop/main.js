@@ -210,6 +210,12 @@ async function createWindow() {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html')).catch(fatalStartup);
+  // The local control panel never navigates; About links use the explicit,
+  // allowlisted app:external handler instead of renderer-created popups.
+  win.webContents.on('will-navigate',event=>event.preventDefault());
+  win.webContents.on('will-redirect',event=>event.preventDefault());
+  win.webContents.on('will-frame-navigate',event=>event.preventDefault());
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('did-finish-load', () => bootLog('control-panel-loaded'));
   win.webContents.on('render-process-gone', (_event, details) => bootLog('panel-process-gone: ' + details.reason));
   browser = createCourseBrowser({ win, WebContentsView, ses: persist,
@@ -567,13 +573,14 @@ async function askVision(payload) {
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
   const externalBase='https://github.com/Invariant-325';
-  ipcMain.handle('app:external',async (_e,url)=>{let u;try{u=new URL(url)}catch{return{ok:false}}if(u.origin!=='https://github.com'||!(u.pathname==='/Invariant-325'||u.pathname.startsWith('/Invariant-325/course-study-utility')))return{ok:false};await electron.shell.openExternal(u.href);return{ok:true}});
+  ipcMain.handle('app:external',async (_e,url)=>{let u;try{u=new URL(url)}catch{return{ok:false}}if(u.origin!=='https://github.com'||u.username||u.password||!(u.pathname==='/Invariant-325'||u.pathname==='/Invariant-325/course-study-utility'||u.pathname.startsWith('/Invariant-325/course-study-utility/')))return{ok:false};await electron.shell.openExternal(u.href);return{ok:true}});
   ipcMain.handle('app:preferences',(_e,patch)=>{if(patch&&typeof patch.defaultWebMuted==='boolean'){store.defaultWebMuted=patch.defaultWebMuted;browser?.setMuted(patch.defaultWebMuted)}if(patch&&typeof patch.autoCheckUpdates==='boolean')store.autoCheckUpdates=patch.autoCheckUpdates;if(patch)saveStore();return{defaultWebMuted:store.defaultWebMuted===true,autoCheckUpdates:store.autoCheckUpdates!==false}});
   ipcMain.handle('app:updates',async()=>{try{const res=await fetch('https://api.github.com/repos/Invariant-325/course-study-utility/releases/latest',{headers:{Accept:'application/vnd.github+json','User-Agent':'CourseStudyUtility'},signal:AbortSignal.timeout(12000)});if(!res.ok)return{ok:false,error:res.status===403?'请求受限，稍后重试':'更新服务返回 '+res.status};const d=await res.json();if(d.prerelease||d.draft)return{ok:false,error:'未找到正式版本'};const clean=v=>String(v).replace(/^v/,'').split('-')[0].split('.').map(Number);const a=clean(d.tag_name),b=clean(app.getVersion());let cmp=0;for(let i=0;i<3;i++){if(a[i]!==b[i]){cmp=a[i]>b[i]?1:-1;break}}if(!a.every(Number.isFinite))return{ok:false,error:'版本信息无效'};return{ok:true,current:app.getVersion(),latest:d.tag_name,available:cmp>0||(cmp===0&&app.getVersion().includes('-')),url:d.html_url}}catch{return{ok:false,error:'无法连接 GitHub，检查网络后重试'}}});
   const progressNamespace=async()=>{const cookies=await browser?.view?.webContents.session.cookies.get({name:'_uid'});const id=cookies?.[0]?.value;return id?require('node:crypto').createHash('sha256').update(id).digest('hex'):null};
   ipcMain.handle('courses:list', async () => {const result=coursePortal?await coursePortal.list():{ok:true,courses:[],state:{phase:'loading'}};const key=await progressNamespace();const cache=key?store.courseProgressByAccount?.[key]||{}:{};result.courses=result.courses.map(c=>({...c,progress:cache[c.id]||null}));return result;});
   ipcMain.handle('courses:refresh', () => coursePortal ? coursePortal.refresh() : {ok:false});
   ipcMain.handle('courses:open', (_e,id) => coursePortal ? coursePortal.open(id) : {ok:false});
+  ipcMain.handle('course:openChapter', (_e,chapter) => coursePortal ? coursePortal.openChapter(chapter) : {ok:false});
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
   ipcMain.handle('courses:start', () => coursePortal ? coursePortal.start() : {ok:false});
   ipcMain.handle('courses:cancel', () => {coursePortal?.cancelStart();return {ok:true};});
@@ -791,7 +798,13 @@ function registerIpc() {
     const view = browser && browser.view;
     if (!view) return { ok: false, error: 'no-view' };
     try {
-      return { ok: true, result: await view.webContents.executeJavaScript(String(code), true) };
+      const frames=[];collectFrames(view.webContents.mainFrame,frames);
+      let target=view.webContents.mainFrame;
+      for(const frame of frames){if(!isPlatformUrl(frame.url))continue;
+        const ready=await frame.executeJavaScript('!!window.__cxNaturalWatchApp?.runner && location.pathname.toLowerCase().endsWith("/mycourse/studentstudy")').catch(()=>false);
+        if(ready){target=frame;break;}
+      }
+      return { ok: true, result: await target.executeJavaScript(String(code), true) };
     } catch (e) {
       return { ok: false, error: String(e && e.message) };
     }
@@ -860,7 +873,13 @@ function registerIpc() {
       }
     })()`;
     try {
-      const data=await view.webContents.executeJavaScript(code,true);
+      const frames=[];collectFrames(view.webContents.mainFrame,frames);
+      let data=null;
+      for(const frame of frames){if(!isPlatformUrl(frame.url))continue;
+        const value=await frame.executeJavaScript(code,true).catch(()=>null);
+        if(value?.ok&&value.items?.length){data=value;break;}
+      }
+      if(!data)data=await coursePortal.overview();
       const id=coursePortal?.status().selected,key=await progressNamespace();
       if(data.ok&&id&&key){
         store.courseProgressByAccount ||= {};const cache=store.courseProgressByAccount[key] ||= {};const saved=cache[id] ||= {chapters:{}};

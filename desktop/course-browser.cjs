@@ -1,9 +1,21 @@
-const { PORTAL_URL, isPlatformUrl, isLandingUrl, clickCourseMenu } = require('./browser-policy.cjs');
+const { PORTAL_URL, isPlatformUrl, isAllowedNavigationUrl, isLandingUrl, clickCourseMenu } = require('./browser-policy.cjs');
 
 function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, defaultMuted = false }) {
   const pages = [];
   let active, closing = false;
   const states = new WeakMap();
+  const blocked = () => {
+    if(active)states.get(active).error='已阻止不受信任的网页：仅允许 HTTPS 平台页面';
+    log('navigation-blocked');
+  };
+  // Request-level guard also covers loadURL(), HTTP redirects and iframe loads.
+  // It is installed once on this dedicated platform session, not on the UI or
+  // the user's browser. Images/video CDN requests are not treated as documents.
+  ses.webRequest.onBeforeRequest({urls:['<all_urls>']},(details,callback)=>{
+    const documentRequest=details.resourceType==='mainFrame'||details.resourceType==='subFrame';
+    const cancel=documentRequest&&details.url!=='about:blank'&&details.url!=='about:srcdoc'&&!isAllowedNavigationUrl(details.url);
+    if(cancel)blocked();callback({cancel});
+  });
   // 默认不展示网页内容：全程在后台运行，需要登录/扫码时才临时显示
   let viewVisible = false;
   const SIDEBAR_W = 280;
@@ -49,7 +61,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
     if (!page.webContents.isDestroyed()) page.webContents.close();
   }
   async function load(page, url) {
-    if (!/^https?:\/\//i.test(url)) return { ok: false, error: '仅支持 HTTP/HTTPS 网页' };
+    if (!isAllowedNavigationUrl(url)) {blocked();return { ok: false, error: '仅允许打开 HTTPS 平台页面' };}
     const state = states.get(page);
     state.error = '';
     try { await page.webContents.loadURL(url); return { ok: true }; }
@@ -87,7 +99,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
   }
   function create(options = {}) {
     const page = new WebContentsView({ ...(options.webContents ? {webContents: options.webContents} : {}), webPreferences: { ...options.webPreferences,
-      session: ses, preload, contextIsolation: true, nodeIntegration: false,
+      session: ses, preload, contextIsolation: true, nodeIntegration: false,webSecurity:true,allowRunningInsecureContent:false,
       nodeIntegrationInSubFrames: false, sandbox: true, backgroundThrottling: false } });
     page.webContents.setAudioMuted(defaultMuted);
     page.setBackgroundColor('#ffffff');
@@ -98,17 +110,26 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
     pages.push(page);
     activate(page);
     wc.setWindowOpenHandler(({ url }) => {
-      if (url !== 'about:blank' && !/^https?:\/\//i.test(url)) return { action: 'deny' };
+      if (!isAllowedNavigationUrl(wc.getURL()) || (url !== 'about:blank' && !isAllowedNavigationUrl(url))) {blocked();return { action: 'deny' };}
       if (pages.length >= 12) return { action: 'deny' };
       // Preserve opener, POST, and delayed about:blank navigation. Chromium owns
       // navigation; manually loadURL(url) here loses all three.
       return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: {
-        session: ses, preload, contextIsolation: true, sandbox: true,
+        session: ses, preload, contextIsolation: true, sandbox: true,webSecurity:true,allowRunningInsecureContent:false,
         nodeIntegration: false, nodeIntegrationInSubFrames: false,
       } }, createWindow: opts => create(opts).webContents };
     });
     wc.on('will-navigate', (event, url) => {
-      if (url !== 'about:blank' && !/^https?:\/\//i.test(url)) event.preventDefault();
+      if (!isAllowedNavigationUrl(url)) {event.preventDefault();blocked();}
+    });
+    wc.on('will-frame-navigate',event=>{
+      if(event.url!=='about:blank'&&event.url!=='about:srcdoc'&&!isAllowedNavigationUrl(event.url)){event.preventDefault();blocked();}
+    });
+    wc.on('will-redirect',(event,url)=>{
+      if(!isAllowedNavigationUrl(event.url||url)){event.preventDefault();blocked();}
+    });
+    wc.on('certificate-error',(event,_url,_error,_certificate,callback)=>{
+      event.preventDefault();states.get(page).error='网页证书验证失败，已拒绝连接';log('certificate-rejected');callback(false);
     });
     wc.on('did-start-navigation', (_e, _url, inPlace, mainFrame) => {
       if (!mainFrame || inPlace) return;
@@ -158,7 +179,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
       const history = active.webContents.navigationHistory;
       const entries = history.getAllEntries();
       for (let i = history.getActiveIndex() - 1; i >= 0; i--) {
-        if (/^https?:\/\//i.test(entries[i].url)) { history.goToIndex(i); layout(); return { ok: true }; }
+        if (isAllowedNavigationUrl(entries[i].url)) { history.goToIndex(i); layout(); return { ok: true }; }
       }
       if (pages.length > 1) { dispose(active); return { ok: true }; }
       return load(active, PORTAL_URL);

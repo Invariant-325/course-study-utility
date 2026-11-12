@@ -1,5 +1,7 @@
 # 课程伴学工具
 
+本地修复版 **0.2.2**：修复课程主页目录读取、onclick 章节入口和启动时序，增加平台网页导航白名单、HTTPS 与证书错误拒绝。恢复“网页”旁的夜间开关及独立 30 秒息屏倒计时胶囊。见 [本版说明](docs/release-0.2.2.md)。已作为预发布归档：[v0.2.2](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.2)。以下下载链接仍为正式版。
+
 Windows 桌面课程辅助工具，兼容学习通（超星平台）。支持课程管理、章节任务跟踪、视频学习辅助，以及由用户配置模型的 AI 视觉识题与作答。
 
 **[下载 0.2.1](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.1)** · [历史版本](https://github.com/Invariant-325/course-study-utility/releases) · [更新记录](CHANGELOG.md)

@@ -50,6 +50,7 @@ if (isAppUi) {
 
     // 课程总览与待办队列
     courseOverview: () => ipcRenderer.invoke('course:overview'),
+    openChapter: chapter => ipcRenderer.invoke('course:openChapter',chapter),
     tasksList: () => ipcRenderer.invoke('tasks:list'),
     tasksAdd: (task) => ipcRenderer.invoke('tasks:add', task),
     tasksUpdate: (id, patch) => ipcRenderer.invoke('tasks:update', id, patch),

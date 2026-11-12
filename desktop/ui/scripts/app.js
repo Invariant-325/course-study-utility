@@ -264,7 +264,7 @@ function bindAccount() {
     if (!box) return;
     const list = chapterFilter === 'all' ? CHAPTERS : CHAPTERS.filter((c) => c.state !== 'done');
     box.innerHTML = list.map((c) =>
-      '<button class="chapter" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + '>' +
+      '<button class="chapter" data-chapter="' + escapeHtml(c.key||'') + '" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + (c.locked?' disabled':'') + '>' +
         '<span class="ch-dot"></span>' +
         '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
         '<span class="ch-count">' + ({done:'全部完成',video:'仅视频完成',quiz:'仅测验完成',todo:'未完成',unknown:'待确认'}[c.state]||'待确认') + '</span>' +
@@ -390,12 +390,14 @@ function bindAccount() {
       const d = r && r.ok ? r.data : null;
       if (!d || !d.ok) return;
       const items = Array.isArray(d.items) ? d.items : [];
+      const heading=document.querySelector('.page[data-page="workspace"] h1');if(heading)heading.textContent=COURSES.find(c=>c.id===selectedCourse)?.name||'当前课程';
       const sum = d.summary || {};
       const cursor = d.cursor || {};
       const total = Number(sum.total) || items.length;
       const done = Number(sum.done) || 0;
 
-      CHAPTERS = items.map((it) => ({
+      CHAPTERS = items.map((it,index) => ({
+        key:it.key||'tree-'+index,locked:!!it.locked,
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
         state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.videoDone===false&&it.quizDone===false?'todo':'unknown',
         pending: it.pending || 0,
@@ -466,20 +468,20 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = onCourse ? (s.stateLabel || s.state || '就绪') : '未在课程学习页';
+      ctxState.textContent = onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已读取':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = onCourse ? (s.stateLabel || '就绪') : '未进入学习页';
+    if (nowState) nowState.textContent = onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
       nowChapter.textContent = onCourse
         ? (s.jobTitle || '') + (v.duration > 0 ? ' · ' + pct + '%' : '')
-        : '请在后台打开课程并进入章节学习页';
+        : CHAPTERS.length?'点击开始，自动打开待完成章节':'课程目录加载完成后会自动显示';
     }
     if (nowRing) {
       const v = s.video || {};
@@ -716,7 +718,7 @@ function bindAccount() {
       if (verify.image) { image.src=verify.image;image.hidden=false; } else {image.removeAttribute('src');image.hidden=true;message.textContent+=' 暂未能读取二维码，可显示原网页处理。';}
     } else {image.removeAttribute('src');image.hidden=true;}
     const status=$('#backgroundStatus');
-    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
+    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',chapters:'章节已读取，可以开始学习。',complete:'可读取的章节均已完成。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
   }
   let autoUpdateTimer=null,updateUrl='';
   async function checkUpdates(automatic=false) {
@@ -728,6 +730,36 @@ function bindAccount() {
     if(result)result.textContent=text;updateUrl=r.url;
     if($('#openUpdate'))$('#openUpdate').hidden=!r.available;
     if(!automatic||r.available)snack(text);
+  }
+  function bindNight() {
+    const button=$('#btnNight'),capsule=$('#nightCountdown'),label=$('#nightCountdownText');
+    if(!button||!capsule||!label)return;
+    let state={pending:false,active:false,executeAt:0,error:''},busy=false,checking=false;
+    const render=()=>{
+      button.setAttribute('aria-checked',String(!!(state.pending||state.active)));
+      button.title=state.pending?'取消息屏倒计时':state.active?'退出夜间模式':'30 秒后息屏并将课程网页静音';
+      capsule.hidden=!state.pending&&!state.error;
+      if(state.error)label.textContent='息屏未完成';
+      else if(state.pending){const seconds=Math.max(0,Math.ceil((state.executeAt-Date.now())/1000));label.textContent=seconds?seconds+' 秒后息屏':'正在息屏…';}
+    };
+    const refresh=async()=>{if(checking||!App?.nightStatus)return;checking=true;try{state=await App.nightStatus();render();}catch{}finally{checking=false}};
+    const cancel=async()=>{
+      if(busy||!App?.nightCancel)return;busy=true;
+      try{const result=await App.nightCancel();if(!result?.ok){snack('取消失败，请重试');return;}state={pending:false,active:false,executeAt:0,error:''};render();snack('夜间模式已关闭');}
+      catch{snack('取消失败，请重试');}
+      finally{busy=false;}
+    };
+    button.addEventListener('click',async()=>{
+      if(state.pending||state.active){await cancel();return;}
+      if(busy)return;if(!App?.nightSchedule){snack('仅桌面客户端支持夜间模式');return;}
+      busy=true;
+      try{const result=await App.nightSchedule(30000);if(!result?.ok){snack('夜间模式开启失败');return;}state={pending:true,active:false,executeAt:result.executeAt,error:''};render();}
+      catch{snack('夜间模式开启失败');}finally{busy=false;}
+    });
+    $('#cancelNight')?.addEventListener('click',()=>cancel().catch(()=>snack('取消失败')));
+    App?.onNight?.(next=>{state=next;render();if(next.error)snack('息屏或网页静音未完成，可关闭夜间模式后重试');});
+    setInterval(()=>{render();if(state.pending&&Date.now()>=state.executeAt)refresh();},1000);
+    refresh();render();
   }
   async function bindProduct() {
     document.querySelectorAll('[data-link]').forEach(b=>b.addEventListener('click',()=>App?.openExternal(b.dataset.link)));
@@ -763,6 +795,12 @@ function bindAccount() {
   }
   // ---------------- 事件绑定 ----------------
   function bind() {
+    $('#chapterList')?.addEventListener('click',async event=>{
+      const button=event.target.closest('[data-chapter]');if(!button||!App?.openChapter)return;
+      const chapter=CHAPTERS.find(c=>c.key===button.dataset.chapter);if(!chapter)return;
+      const result=await App.openChapter({key:chapter.key,title:chapter.name}).catch(()=>({ok:false,error:'章节打开失败'}));
+      snack(result.ok?'正在打开章节…':result.error);await pollCourseStatus();
+    });
     $$('.sideitem[data-nav]').forEach((el) => {
       el.addEventListener('click', () => goto(el.dataset.nav));
     });
@@ -997,6 +1035,7 @@ function bindAccount() {
     bind();
     bindTheme();
     bindAccount();
+    bindNight();
     bindProduct().catch(()=>{});
     $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
     $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
