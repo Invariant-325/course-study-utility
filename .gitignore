@@ -24,3 +24,8 @@ desktop/dist/
 desktop/release*/
 desktop/_pkg/
 /dist/
+
+# Local validation secrets and profiles
+tests/test-key.pem
+tests/test-cert.pem
+tests/.profiles/

@@ -11,6 +11,46 @@
 // 完成态只信平台渲染的信号，不用本地记账认定"已完成"。
 // ---------------------------------------------------------------------------
 const CourseTree = (function () {
+  let freshCatalog={url:'',at:0,counts:new Map(),summary:null},refreshing=null,lastAttempt={url:'',at:0};
+  const visitedCatalog=new Set();
+  function chapterName(el){return Dom.textOf(queryFirst(el,SEL.catalogNameNode)||el,160).replace(/\s*\d+\s*个待完成(?:任务点)?\s*$/,'').trim();}
+  function resetTraversal(){visitedCatalog.clear();}
+  async function refreshCatalog(force){
+    if(typeof window.fetch!=='function'||typeof window.DOMParser!=='function')return {ok:false,reason:'unavailable'};
+    if(refreshing)return refreshing;
+    if(!force&&freshCatalog.url===location.href&&Date.now()-freshCatalog.at<30000)return {ok:true,cached:true};
+    const url=location.href;
+    if(!force&&lastAttempt.url===url&&Date.now()-lastAttempt.at<30000)return {ok:false,reason:'cooldown'};
+    lastAttempt={url,at:Date.now()};
+    refreshing=(async()=>{const controller=new window.AbortController();const timer=setTimeout(()=>controller.abort(),6000);
+      try{
+        const response=await window.fetch(url,{credentials:'include',cache:'no-store',redirect:'error',signal:controller.signal});
+        if(!response.ok||location.href!==url)return {ok:false,reason:'navigation-or-network'};
+        const doc=new window.DOMParser().parseFromString(await response.text(),'text/html');
+        const nodes=[...doc.querySelectorAll('.posCatalog_select')].filter(el=>!el.classList.contains(SEL.firstLayerClass));
+        if(!nodes.length)return {ok:false,reason:'no-fresh-catalog'};
+        const counts=new Map();
+        for(const el of nodes){const raw=Dom.textOf(el,200),m=raw.match(SEL.catalogPendingPattern);let pending=m?Number(m[1]):null;
+          if(pending===null&&el.querySelector('[title="已完成"],[aria-label="已完成"],.catalog_points_yi,.catalog_points_done'))pending=0;
+          if(pending!==null)counts.set(chapterName(el),pending);
+        }
+        if(location.href!==url)return {ok:false,reason:'navigation'};
+        const walker=doc.createTreeWalker(doc.body,4),parts=[];while(walker.nextNode())parts.push(walker.currentNode.nodeValue);
+        const sum=parts.join(' ').match(/已完成任务点\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/);
+        freshCatalog={url,at:Date.now(),counts,summary:sum&&Number(sum[1])<=Number(sum[2])?{done:Number(sum[1]),total:Number(sum[2])}:null};
+        return {ok:true,known:counts.size};
+      }catch{return {ok:false,reason:'refresh-failed'}}finally{clearTimeout(timer);refreshing=null;}
+    })();return refreshing;
+  }
+  function currentCatalogComplete(){const active=catalogEntries().items.find(isActiveItem);return !!active&&readCatalogPending(active)===0;}
+  function selectFirstIncomplete(){
+    const items=catalogEntries().items;if(!items.length)return {ok:true,changed:false};
+    const first=items.find(el=>readCatalogPending(el)!==0);if(!first)return {ok:true,changed:false};
+    if(readCatalogPending(first)===null)return {ok:false,reason:'unknown-progress'};
+    if(isActiveItem(first))return {ok:true,changed:false};
+    const before=signatureOf(enumerate());
+    return {ok:Dom.click(queryFirst(first,SEL.catalogNameNode)||first),changed:true,before};
+  }
   // ---------- 完成态（自身 + 向上有限查找）----------
   function readStateOnNode(el) {
     try {
@@ -201,7 +241,7 @@ const CourseTree = (function () {
           container: container,
           frames: frames,
           frameEl: frames[0] || null,
-          state: stateInfo.state,
+          state: currentCatalogComplete()?'finished':stateInfo.state,
           stateBy: stateInfo.by,
           stateLabel: stateInfo.label || '',
           type: detectJobType(frames),
@@ -397,6 +437,7 @@ const CourseTree = (function () {
   // ---------- 目录层完成度 ----------
   function readCatalogPending(itemEl) {
     if (!itemEl) return null;
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.counts.has(chapterName(itemEl)))return freshCatalog.counts.get(chapterName(itemEl));
     const text = Dom.textOf(itemEl, 200);
     if (!text) return null;
     const match = text.match(SEL.catalogPendingPattern);
@@ -465,6 +506,7 @@ const CourseTree = (function () {
   // 实机验证发现：.chapter_head 位于内层 iframe（knowledge/cards），不在顶层文档，
   // 因此必须遍历全部可达文档，不能只看 window.document。
   function readCatalogSummary() {
+    if(freshCatalog.url===location.href&&Date.now()-freshCatalog.at<45000&&freshCatalog.summary)return {...freshCatalog.summary};
     let docs = [];
     try {
       const collected = Dom.collectDocuments(window, SEL.maxFrameDepth);
@@ -524,13 +566,18 @@ const CourseTree = (function () {
     }
     if (activeIndex < 0) return { ok: false, reason: 'no-active-item' };
 
-    const next = catalog.items[activeIndex + 1];
-    if (!next) return { ok: false, reason: 'last-item' };
+    visitedCatalog.add(chapterName(catalog.items[activeIndex]));
+    const strategy=typeof Config==='undefined'?'sequential':Config.get('studyStrategy');
+    const order=strategy==='auto'||strategy==='quiz-first'||strategy==='quiz-only'
+      ? catalog.items.map((_,i)=>i) : [...catalog.items.keys()].slice(activeIndex+1).concat([...catalog.items.keys()].slice(0,activeIndex));
+    const nextIndex=order.find(i=>i!==activeIndex&&!visitedCatalog.has(chapterName(catalog.items[i]))&&readCatalogPending(catalog.items[i])>0);
+    const next=nextIndex===undefined?null:catalog.items[nextIndex];
+    if(!next)return {ok:false,reason:catalog.items.some(el=>readCatalogPending(el)===null&&!visitedCatalog.has(chapterName(el)))?'unverified-catalog':'all-complete'};
 
     const target = queryFirst(next, SEL.catalogNameNode) || next;
     const title = Dom.textOf(next, 40);
     if (!Dom.click(target)) return { ok: false, reason: 'click-failed' };
-    return { ok: true, by: 'catalog:' + catalog.rootSelector, title: title, index: activeIndex + 1 };
+    return { ok: true, by: 'catalog:' + catalog.rootSelector, title: title, index: nextIndex };
   }
 
   function clickNextSectionButton() {
@@ -582,6 +629,8 @@ const CourseTree = (function () {
   }
 
   return {
+    activeCatalogKey(){const active=catalogEntries().items.find(isActiveItem);return active?chapterName(active):'';},
+    refreshCatalog,resetTraversal,currentCatalogComplete,selectFirstIncomplete,
     enumerate,
     enumerateDetail,
     signatureOf,

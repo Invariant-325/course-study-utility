@@ -13,6 +13,8 @@ const Runner = (function () {
     running: false,
     currentJob: null,
     currentTitle: '',
+    boundCatalog: '',
+    handledWork:new Set(),
     playedCount: 0, // 真正开始播放过的次数
     confirmedCount: 0, // 平台确认完成的次数
     pendingConfirm: new Set(), // 用户跳过、待人工确认的 stableKey
@@ -309,6 +311,7 @@ const Runner = (function () {
   async function playJob(job, token, options) {
     const opts = options || {};
     if (isStale(token) || !job) return;
+    R.boundCatalog=CourseTree.activeCatalogKey?.()||CourseTree.catalogProgress().items.find(i=>i.active)?.text||'';
     R.currentJob = job;
     R.currentTitle = job.title;
     if (sm.state() !== 'locating') sm.go('locating', 'job-selected');
@@ -544,11 +547,13 @@ const Runner = (function () {
   }
 
   async function processPendingQuiz(token, jobs) {
-    if (Config.get('quizGateEnabled') === false) return 'off';
+    if (Config.get('quizGateEnabled') === false || Config.get('studyStrategy') === 'video-only') return 'off';
     if (typeof CourseTree.findPendingWorkJobs !== 'function') return 'off';
     if (typeof ChapterQuizRunner === 'undefined') return 'off';
 
-    const pending = CourseTree.findPendingWorkJobs(jobs);
+    const rawPending = CourseTree.findPendingWorkJobs(jobs);
+    const pending=rawPending.filter(j=>!R.handledWork.has(j.stableKey||j.id));
+    if(rawPending.length&&!pending.length){enterQuizManual('测验已提交，等待平台确认；刷新进度后继续，避免重复作答');return 'blocked';}
     if (!pending.length) return 'none';
 
     Log.info('本节还有 ' + pending.length + ' 个未完成章节测验，先做完再继续');
@@ -604,6 +609,8 @@ const Runner = (function () {
       return 'blocked';
     }
 
+    R.handledWork.add(pending[0].stableKey||pending[0].id);
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog(true);
     Log.info('本章测验已完成并提交（填 ' + (result.filled || 0) + ' 题），继续连播');
     return 'handled';
   }
@@ -624,7 +631,7 @@ const Runner = (function () {
     const beforeSignature = CourseTree.signatureOf(beforeJobs);
 
     // 1) 同页仍有未完成视频（排除已跳过待确认的任务）
-    const pick = CourseTree.pickNextVideoTarget(beforeJobs, R.currentJob ? R.currentJob.id : null, {
+    const pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(beforeJobs, R.currentJob ? R.currentJob.id : null, {
       excludeKeys: R.pendingConfirm,
     });
     if (pick.job) {
@@ -643,10 +650,20 @@ const Runner = (function () {
     }
     if (gate === 'blocked') return;
 
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog();
+    if(isStale(token))return;
+    if(Config.get('studyStrategy')==='auto'){
+      const active=CourseTree.catalogProgress().items.find(i=>i.active);
+      const jobs=CourseTree.enumerateDetail().jobs;
+      if(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0){
+        enterNeedsReview('自动策略：本章仍有未完成或待确认的任务，完成并刷新进度后继续');return;
+      }
+    }
     // 2) 切换下一节
     let outcome = CourseTree.clickNextCatalogItem();
     Log.info('目录切换：' + (outcome.ok ? '成功（' + (outcome.title || '') + '）' : '失败（' + outcome.reason + '）'));
-    if (!outcome.ok) {
+    if (!outcome.ok && outcome.reason==='unverified-catalog') {enterNeedsReview('章节进度尚未核实，已停止自动推进');return;}
+    if (!outcome.ok && outcome.reason!=='all-complete') {
       outcome = CourseTree.clickNextSectionButton();
       Log.info('按钮切换：' + (outcome.ok ? '成功（' + outcome.by + '）' : '失败（' + outcome.reason + '）'));
     }
@@ -700,6 +717,14 @@ const Runner = (function () {
     if (sm.state() !== 'locating') sm.go('locating', afterJobId ? 'continue-after' : 'begin');
     publish();
 
+    if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog();
+    if(isStale(token))return;
+    if(Config.get('studyStrategy')==='quiz-only'&&Config.get('quizGateEnabled')!==true){block('仅补测验需要先开启自动做题');return;}
+    if(Config.get('studyStrategy')==='quiz-first'){
+      const gate=await processPendingQuiz(token,CourseTree.enumerateDetail().jobs);
+      if(gate==='blocked')return;
+      if(gate==='handled'){if(isStale(token))return;await locateAndPlay(token,afterJobId);return;}
+    }
     const detail = CourseTree.enumerateDetail();
     let jobs = detail.jobs;
     const inaccessible = detail.inaccessible;
@@ -719,7 +744,7 @@ const Runner = (function () {
       );
     }
 
-    let pick = CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+    let pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
     let target = pick.job;
 
     if (!target && !jobs.length) {
@@ -727,7 +752,7 @@ const Runner = (function () {
       const waited = await CourseTree.waitForJobsChange('', 8000);
       if (isStale(token)) return;
       jobs = waited.jobs;
-      pick = CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
+      pick = Config.get('studyStrategy') === 'quiz-only' ? {job:null} : CourseTree.pickNextVideoTarget(jobs, afterJobId, { excludeKeys: R.pendingConfirm });
       target = pick.job;
     }
 
@@ -896,12 +921,8 @@ const Runner = (function () {
   }
 
   function stopQuiz() {
-    if (typeof QuizRunner === 'undefined') return;
-    try {
-      QuizRunner.stop();
-    } catch (e) {
-      /* ignore */
-    }
+    try {if(typeof QuizRunner!=='undefined')QuizRunner.stop();}catch{}
+    try {if(typeof ChapterQuizRunner!=='undefined')ChapterQuizRunner.stop();}catch{}
   }
 
   // ---------------- awaitingConfirm 的三个操作 ----------------
@@ -964,6 +985,8 @@ const Runner = (function () {
     R.playedCount = 0;
     R.confirmedCount = 0;
     R.advanceGuard = 0;
+    R.handledWork=new Set();
+    if(typeof CourseTree.resetTraversal==='function')CourseTree.resetTraversal();
     R.resumeAttempts = 0;
     R.playRejectCount = 0;
     R.lastError = '';
@@ -978,9 +1001,19 @@ const Runner = (function () {
     if (R.pendingConfirm.size) {
       Log.info('已载入 ' + R.pendingConfirm.size + ' 个历史跳过任务，本次将排除它们');
     }
+    sm.go('locating','start-prepare');
     publish();
 
-    locateAndPlay(token, null).catch(function (e) {
+    (async()=>{
+      if(Config.get('studyStrategy')==='auto'&&typeof CourseTree.selectFirstIncomplete==='function'){
+        await CourseTree.refreshCatalog(true);if(isStale(token))return;
+        const first=CourseTree.selectFirstIncomplete();
+        if(!first.ok){enterNeedsReview('自动策略：前面章节进度未知或入口不可用，刷新确认后继续');return;}
+        if(first.changed)await CourseTree.waitForJobsChange(first.before,Number(Config.get('advanceTimeoutMs'))||15000);
+        if(isStale(token))return;
+      }
+      await locateAndPlay(token,null);
+    })().catch(function (e) {
       Log.error('主流程异常：' + (e && e.message));
       block('主流程异常：' + (e && e.message));
     });
@@ -989,13 +1022,14 @@ const Runner = (function () {
 
   function pause() {
     const state = sm.state();
-    if (['locating', 'playing', 'settling', 'advancing'].indexOf(state) === -1) {
+    if (['locating', 'playing', 'settling', 'advancing', 'quizWait'].indexOf(state) === -1) {
       Log.warn('当前状态（' + sm.label() + '）不可暂停');
       return false;
     }
     R.runToken++;
     R.running = false;
     const video = VideoCtl.current();
+    stopQuiz();
     stopAll();
     if (video) {
       try {
@@ -1211,6 +1245,23 @@ const Runner = (function () {
     },
     quizSnapshot() {
       return typeof QuizRunner !== 'undefined' ? QuizRunner.snapshot() : null;
+    },
+    async refreshProgress(force){
+      const token=R.runToken;
+      const result=typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(force):{ok:false};
+      if(!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
+        const video=VideoCtl.current();stopWatchdog();VideoCtl.detach();if(video)video.pause();
+        Log.info('平台已确认当前视频任务完成，停止播放并检查本章后续任务');sm.go('settling','platform-confirmed');sm.go('advancing','platform-confirmed');goAdvance(token);
+      }
+      return result;
+    },
+    reconcilePlayback(){
+      if(!R.running||sm.state()!=='playing')return;
+      const active=CourseTree.activeCatalogKey?.()||CourseTree.catalogProgress().items.find(i=>i.active)?.text||'';
+      const video=VideoCtl.current();
+      if((video&&video.isConnected===false)||(R.boundCatalog&&active&&R.boundCatalog!==active)){
+        R.runToken++;R.running=false;stopAll();sm.go('stopped','manual-chapter-change');publish();
+      }
     },
     diagnose,
     snapshot,

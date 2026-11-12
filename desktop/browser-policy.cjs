@@ -5,6 +5,12 @@ function isPlatformUrl(value) {
   try { const u = new URL(value); return /^https?:$/.test(u.protocol) && /(^|\.)(chaoxing|xuexitong)\.com$/i.test(u.hostname); }
   catch { return false; }
 }
+function isAllowedNavigationUrl(value) {
+  try {
+    const u=new URL(value);
+    return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&/(^|\.)(chaoxing|xuexitong)\.com$/i.test(u.hostname);
+  } catch {return false;}
+}
 function isLandingUrl(value) {
   if (!isPlatformUrl(value)) return false;
   const u = new URL(value);
@@ -36,4 +42,4 @@ function clickCourseMenu() {
 }
 function cookieUrl(c) { return (c.secure ? 'https://' : 'http://') + c.domain.replace(/^\./, '') + (c.path || '/'); }
 function cookieIdentity(c) { return JSON.stringify([c.domain, c.path || '/', c.name]); }
-module.exports = { PORTAL_URL, isPlatformUrl, isLandingUrl, clickCourseMenu, cookieUrl, cookieIdentity };
+module.exports = { PORTAL_URL, isPlatformUrl, isAllowedNavigationUrl, isLandingUrl, clickCourseMenu, cookieUrl, cookieIdentity };

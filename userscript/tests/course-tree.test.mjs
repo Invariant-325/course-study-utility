@@ -116,7 +116,7 @@ test('目录：识别条目与当前激活项', () => {
   const { exports } = env(
     '<div id="coursetree"><ul>' +
       '<li><div class="posCatalog_select posCatalog_active"><span class="posCatalog_name">第一节</span></div></li>' +
-      '<li><div class="posCatalog_select"><span class="posCatalog_name">第二节</span></div></li>' +
+      '<li><div class="posCatalog_select"><span class="posCatalog_name">第二节</span><span>1个待完成任务点</span></div></li>' +
       '</ul></div>'
   );
   const catalog = exports.CourseTree.catalogEntries();
@@ -128,7 +128,7 @@ test('目录：点击当前项的下一项', () => {
   const { exports, document } = env(
     '<div id="coursetree"><ul>' +
       '<li><div class="posCatalog_select posCatalog_active"><span class="posCatalog_name">第一节</span></div></li>' +
-      '<li><div class="posCatalog_select"><span class="posCatalog_name">第二节</span></div></li>' +
+      '<li><div class="posCatalog_select"><span class="posCatalog_name">第二节</span><span>1个待完成任务点</span></div></li>' +
       '</ul></div>'
   );
   let clickedText = null;
@@ -150,7 +150,7 @@ test('目录：已是最后一节时明确失败而不是乱点', () => {
   );
   const outcome = exports.CourseTree.clickNextCatalogItem();
   assert.equal(outcome.ok, false);
-  assert.equal(outcome.reason, 'last-item');
+  assert.equal(outcome.reason, 'all-complete');
 });
 
 test('视频定位：任务点 iframe 内的 video 能被找到', () => {

@@ -264,7 +264,7 @@ function bindAccount() {
     if (!box) return;
     const list = chapterFilter === 'all' ? CHAPTERS : CHAPTERS.filter((c) => c.state !== 'done');
     box.innerHTML = list.map((c) =>
-      '<button class="chapter" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + '>' +
+      '<button class="chapter" data-chapter="' + escapeHtml(c.key||'') + '" data-state="' + c.state + '"' + (c.current ? ' data-current="true"' : '') + (c.locked?' disabled':'') + '>' +
         '<span class="ch-dot"></span>' +
         '<span class="ch-name">' + escapeHtml(c.name) + '</span>' +
         '<span class="ch-count">' + ({done:'全部完成',video:'仅视频完成',quiz:'仅测验完成',todo:'未完成',unknown:'待确认'}[c.state]||'待确认') + '</span>' +
@@ -359,6 +359,8 @@ function bindAccount() {
 
   // 从页面读 Runner 快照（沿用旧界面的做法）
   async function readRunner() {
+    if(App?.playbackState){try{const value=await App.playbackState();return {mounted:!!value.runner,snap:{...(value.runner||{}),...(value.video?{video:value.video}:{})},mode:value.mode,busy:value.busy};}catch{return {mounted:false,snap:{},mode:'idle'}}}
+
     if (!App || typeof App.evalMain !== 'function') return { mounted: false, snap: {} };
     try {
       const r = await App.evalMain(
@@ -390,12 +392,14 @@ function bindAccount() {
       const d = r && r.ok ? r.data : null;
       if (!d || !d.ok) return;
       const items = Array.isArray(d.items) ? d.items : [];
+      const heading=document.querySelector('.page[data-page="workspace"] h1');if(heading)heading.textContent=COURSES.find(c=>c.id===selectedCourse)?.name||'当前课程';
       const sum = d.summary || {};
       const cursor = d.cursor || {};
       const total = Number(sum.total) || items.length;
       const done = Number(sum.done) || 0;
 
-      CHAPTERS = items.map((it) => ({
+      CHAPTERS = items.map((it,index) => ({
+        key:it.key||'tree-'+index,locked:!!it.locked,
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
         state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.videoDone===false&&it.quizDone===false?'todo':'unknown',
         pending: it.pending || 0,
@@ -458,7 +462,7 @@ function bindAccount() {
     const d = await readRunner();
     RUNNER = d;
     const s = d.snap || {};
-    playing = !!d.mounted && ['playing','locating','settling','advancing'].includes(s.state);
+    playing = d.mode?d.mode==='playing':!!d.mounted&&['playing','locating','settling','advancing'].includes(s.state);
     const onCourse = !!d.mounted;
 
     // 顶栏上下文
@@ -466,20 +470,20 @@ function bindAccount() {
     const ctxState = $('#ctxState');
     if (ctxCourse && onCourse && s.jobTitle) ctxCourse.textContent = String(s.jobTitle).slice(0, 40);
     if (ctxState) {
-      ctxState.textContent = onCourse ? (s.stateLabel || s.state || '就绪') : '未在课程学习页';
+      ctxState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || s.state || '就绪') : CHAPTERS.length?'章节已读取':'正在读取课程';
     }
 
     // 工作区当前播放
     const nowState = $('#nowState');
     const nowChapter = $('#nowChapter');
     const nowRing = $('#nowRing');
-    if (nowState) nowState.textContent = onCourse ? (s.stateLabel || '就绪') : '未进入学习页';
+    if (nowState) nowState.textContent = d.mode?({playing:'播放中',paused:'已暂停',preparing:'正在准备',working:'正在处理测验',waiting:'等待处理',idle:'尚未开始'}[d.mode]||'') : onCourse ? (s.stateLabel || '就绪') : CHAPTERS.length?'可以开始学习':'正在读取章节';
     if (nowChapter) {
       const v = s.video || {};
       const pct = v.duration > 0 ? Math.round(((v.currentTime || 0) / v.duration) * 100) : 0;
       nowChapter.textContent = onCourse
         ? (s.jobTitle || '') + (v.duration > 0 ? ' · ' + pct + '%' : '')
-        : '请在后台打开课程并进入章节学习页';
+        : CHAPTERS.length?'点击开始，自动打开待完成章节':'课程目录加载完成后会自动显示';
     }
     if (nowRing) {
       const v = s.video || {};
@@ -576,23 +580,15 @@ function bindAccount() {
   // ---------------- FAB ----------------
   let playing = false;
 
+  let actionBusy=false;
+  function controlAction(){return RUNNER.mode==='preparing'?'pause':RUNNER.mode==='working'?'pause':playing?'pause':['paused','waiting'].includes(RUNNER.mode)||['paused','blocked','needsReview','awaitingConfirm','quizWait'].includes(RUNNER.snap?.state)?'resume':'start';}
   function updateFab() {
-    const fab = $('#fab');
-    const label = $('#fabLabel');
-    if (!fab || !label) return;
-    const onWorkspace = currentPage === 'workspace';
-    fab.style.display = ['settings','about'].includes(currentPage)?'none':'inline-flex';
-    if (onWorkspace) {
-      playing ? (label.textContent = '暂停') : (label.textContent = '继续');
-      fab.classList.toggle('is-playing', playing);
-      fab.querySelector('svg').innerHTML = playing
-        ? '<path d="M9 5v14M15 5v14"/>'
-        : '<path d="M8 5l11 7-11 7z"/>';
-    } else {
-      label.textContent = '开始学习';
-      fab.classList.remove('is-playing');
-      fab.querySelector('svg').innerHTML = '<path d="M8 5l11 7-11 7z"/>';
-    }
+    const action=controlAction(),label=RUNNER.mode==='preparing'?'取消准备':action==='pause'?'暂停':action==='resume'?'继续学习':'开始学习';
+    const icon=action==='pause'?'<path d="M9 5v14M15 5v14"/>':'<path d="M8 5l11 7-11 7z"/>';
+    const fab=$('#fab');if(fab){fab.style.display=['settings','about'].includes(currentPage)?'none':'inline-flex';fab.classList.toggle('is-playing',action==='pause');}
+    if($('#fabLabel'))$('#fabLabel').textContent=label;
+    for(const id of ['fab','sideStart','nowToggle','wkPause']){const button=$('#'+id);if(!button)continue;button.disabled=actionBusy||!!RUNNER.busy;button.title=label;button.setAttribute('aria-label',label);if(id==='fab'){button.querySelector('svg').innerHTML=icon;}else button.innerHTML='<svg viewBox="0 0 24 24">'+icon+'</svg>'+label;}
+    if($('#wkStop'))$('#wkStop').disabled=actionBusy;
   }
 
   // ---------------- Snackbar ----------------
@@ -716,7 +712,7 @@ function bindAccount() {
       if (verify.image) { image.src=verify.image;image.hidden=false; } else {image.removeAttribute('src');image.hidden=true;message.textContent+=' 暂未能读取二维码，可显示原网页处理。';}
     } else {image.removeAttribute('src');image.hidden=true;}
     const status=$('#backgroundStatus');
-    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
+    if (status) status.textContent=state.error || ({loading:'正在加载课程…',catalog:'选择课程开始学习。',chapters:'章节已读取，可以开始学习。',complete:'可读取的章节均已完成。',opening:'正在读取章节…',ready:'准备好了，可以开始学习。',running:'正在学习。',verification:'在手机上完成验证后即可继续。',login:'登录后即可加载课程。'}[state.phase] || '');
   }
   let autoUpdateTimer=null,updateUrl='';
   async function checkUpdates(automatic=false) {
@@ -728,6 +724,47 @@ function bindAccount() {
     if(result)result.textContent=text;updateUrl=r.url;
     if($('#openUpdate'))$('#openUpdate').hidden=!r.available;
     if(!automatic||r.available)snack(text);
+  }
+  async function bindLearning() {
+    if(!App?.learningPreferences)return;
+    const controls={quizGateEnabled:$('#swAutoQuiz'),quizAutoSubmit:$('#swAutoSubmit'),studyStrategy:$('#studyStrategy'),advanceOnPlatformComplete:$('#advanceOnPlatformComplete')};
+    const apply=values=>{for(const [key,node] of Object.entries(controls)){if(node){if(key==='studyStrategy')node.value=values[key];else node.checked=values[key]===true;}}};
+    apply(await App.learningPreferences());
+    for(const [key,node] of Object.entries(controls))node?.addEventListener('change',async()=>{
+      node.disabled=true;
+      try{apply(await App.learningPreferences({[key]:key==='studyStrategy'?node.value:node.checked}));snack('学习偏好已保存');}
+      catch{snack('保存失败，请重试');apply(await App.learningPreferences());}finally{node.disabled=false;}
+    });
+  }
+  function bindNight() {
+    const button=$('#btnNight'),capsule=$('#nightCountdown'),label=$('#nightCountdownText');
+    if(!button||!capsule||!label)return;
+    let state={pending:false,active:false,executeAt:0,error:''},busy=false,checking=false;
+    const render=()=>{
+      button.setAttribute('aria-checked',String(!!(state.pending||state.active)));
+      button.title=state.pending?'取消息屏倒计时':state.active?'退出夜间模式':'30 秒后息屏并将课程网页静音';
+      capsule.hidden=!state.pending&&!state.error;
+      if(state.error)label.textContent='息屏未完成';
+      else if(state.pending){const seconds=Math.max(0,Math.ceil((state.executeAt-Date.now())/1000));label.textContent=seconds?seconds+' 秒后息屏':'正在息屏…';}
+    };
+    const refresh=async()=>{if(checking||!App?.nightStatus)return;checking=true;try{state=await App.nightStatus();render();}catch{}finally{checking=false}};
+    const cancel=async()=>{
+      if(busy||!App?.nightCancel)return;busy=true;
+      try{const result=await App.nightCancel();if(!result?.ok){snack('取消失败，请重试');return;}state={pending:false,active:false,executeAt:0,error:''};render();snack('夜间模式已关闭');}
+      catch{snack('取消失败，请重试');}
+      finally{busy=false;}
+    };
+    button.addEventListener('click',async()=>{
+      if(state.pending||state.active){await cancel();return;}
+      if(busy)return;if(!App?.nightSchedule){snack('仅桌面客户端支持夜间模式');return;}
+      busy=true;
+      try{const result=await App.nightSchedule(30000);if(!result?.ok){snack('夜间模式开启失败');return;}state={pending:true,active:false,executeAt:result.executeAt,error:''};render();}
+      catch{snack('夜间模式开启失败');}finally{busy=false;}
+    });
+    $('#cancelNight')?.addEventListener('click',()=>cancel().catch(()=>snack('取消失败')));
+    App?.onNight?.(next=>{state=next;render();if(next.error)snack('息屏或网页静音未完成，可关闭夜间模式后重试');});
+    setInterval(()=>{render();if(state.pending&&Date.now()>=state.executeAt)refresh();},1000);
+    refresh();render();
   }
   async function bindProduct() {
     document.querySelectorAll('[data-link]').forEach(b=>b.addEventListener('click',()=>App?.openExternal(b.dataset.link)));
@@ -744,6 +781,12 @@ function bindAccount() {
     catch (e) { snack('窗口操作失败：' + e.message); }
   }
   async function runnerAction(method) {
+    if(App?.playbackCommand){
+      if(actionBusy)return;actionBusy=true;updateFab();
+      try{const result=await App.playbackCommand(method);snack(result?.ok?(result.pending?'正在准备课程，可取消':({start:'已请求开始',resume:'已请求继续',pause:'已暂停',stop:'已停止'}[method])):result?.error||'操作未生效');await loadRunnerState();}
+      catch{snack('操作失败，请重试');}finally{actionBusy=false;updateFab();}return;
+    }
+
     if (!App || !App.evalMain) { snack('预览模式不执行课程任务'); return; }
     try {
       if ((method==='pause'||method==='stop') && App.courseCancelStart) await App.courseCancelStart();
@@ -763,13 +806,24 @@ function bindAccount() {
   }
   // ---------------- 事件绑定 ----------------
   function bind() {
+    $('#refreshProgress')?.addEventListener('click',async()=>{
+      const button=$('#refreshProgress');button.disabled=true;
+      try{const result=await App?.refreshProgress?.();await loadCourses();renderAll();snack(result?.ok?'进度已刷新':'未取得新的平台进度，保留待确认状态');}
+      catch{snack('进度刷新失败');}finally{button.disabled=false;}
+    });
+    $('#chapterList')?.addEventListener('click',async event=>{
+      const button=event.target.closest('[data-chapter]');if(!button||!App?.openChapter)return;
+      const chapter=CHAPTERS.find(c=>c.key===button.dataset.chapter);if(!chapter)return;
+      const result=await App.openChapter({key:chapter.key,title:chapter.name}).catch(()=>({ok:false,error:'章节打开失败'}));
+      snack(result.ok?'正在打开章节…':result.error);await pollCourseStatus();
+    });
     $$('.sideitem[data-nav]').forEach((el) => {
       el.addEventListener('click', () => goto(el.dataset.nav));
     });
 
     const fab = $('#fab');
     if (fab) {
-      fab.addEventListener('click', () => { goto('workspace'); runnerAction(playing ? 'pause' : RUNNER.snap?.state === 'paused' ? 'resume' : 'start'); });
+      fab.addEventListener('click', () => { goto('workspace'); runnerAction(controlAction()); });
     }
 
     const min = $('#winMin');
@@ -780,7 +834,7 @@ function bindAccount() {
     if (close) close.addEventListener('click', () => windowAction('hide'));
 
     const ss = $('#sideStart');
-    if (ss) ss.addEventListener('click', () => { goto('workspace'); runnerAction('start'); });
+    if (ss) ss.addEventListener('click', () => { goto('workspace'); runnerAction(controlAction()); });
 
     const gr = $('#gRefresh');
     if (gr) gr.addEventListener('click', refreshCourses);
@@ -943,12 +997,12 @@ function bindAccount() {
     if (bl2) bl2.addEventListener('click', () => { LOGS.length = 0; renderLogs(); snack('日志已清空'); });
 
     const pz = $('#wkPause');
-    if (pz) pz.addEventListener('click', () => runnerAction('pause'));
+    if (pz) pz.addEventListener('click', () => runnerAction(controlAction()));
     const sp = $('#wkStop');
     if (sp) sp.addEventListener('click', () => openDialog('结束任务', '结束后当前章节会停在这里，可随时重新开始。', () => runnerAction('stop')));
 
     const nt2 = $('#nowToggle');
-    if (nt2) nt2.addEventListener('click', () => runnerAction(playing ? 'pause' : RUNNER.snap?.state === 'paused' ? 'resume' : 'start'));
+    if (nt2) nt2.addEventListener('click', () => runnerAction(controlAction()));
 
     // 内容滚动时显示顶部渐隐
     const main = $('#main');
@@ -997,6 +1051,8 @@ function bindAccount() {
     bind();
     bindTheme();
     bindAccount();
+    bindNight();
+    bindLearning().catch(()=>snack("学习偏好加载失败"));
     bindProduct().catch(()=>{});
     $('#showVerificationWeb')?.addEventListener('click',()=>App?.toggleWeb(true));
     $('#hidePlatformWeb')?.addEventListener('click',()=>App?.toggleWeb(false));
@@ -1041,7 +1097,7 @@ function bindAccount() {
         renderSideCourses();
         renderChapters();
         renderQueue();
-      }, 3000);
+      }, 750);
       setInterval(async () => {
         await loadStats();
         await loadModel();

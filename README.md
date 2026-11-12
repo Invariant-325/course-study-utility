@@ -1,5 +1,7 @@
 # 课程伴学工具
 
+本地修复版 **0.2.3**：默认按章自动完成，增加测验策略与平台确认后提前结束选项，修复进度刷新、开关保存、播放按钮同步及夜间防休眠。见 [本版说明](docs/release-0.2.3.md)。已作为预发布归档：[v0.2.3](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.3)。以下下载链接仍为正式版。
+
 Windows 桌面课程辅助工具，兼容学习通（超星平台）。支持课程管理、章节任务跟踪、视频学习辅助，以及由用户配置模型的 AI 视觉识题与作答。
 
 **[下载 0.2.1](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.2.1)** · [历史版本](https://github.com/Invariant-325/course-study-utility/releases) · [更新记录](CHANGELOG.md)
