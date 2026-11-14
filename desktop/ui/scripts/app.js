@@ -913,7 +913,7 @@ function bindAccount() {
       btnMore.addEventListener('click', async () => {
         try {
           if (App && typeof App.toggleWeb === 'function') {
-            await setPlatformWeb();
+            const r = await setPlatformWeb();
             snack(r && r.visible ? '已显示网页（用于登录 / 扫码）' : '已隐藏网页，自动化继续在后台运行');
           } else {
             snack('预览模式：正式版这里会切换网页显示');

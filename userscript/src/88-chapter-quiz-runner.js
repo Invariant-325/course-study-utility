@@ -249,8 +249,18 @@ const ChapterQuizRunner = (function () {
 
         requested++;
         const letters = q.options.map(function (o) { return o.letter; });
-        const result = await QuizVision.ask(image.dataUrl, q.key, letters);
+        let result = await QuizVision.ask(image.dataUrl, q.key, letters);
         if (token !== S.token) return false;
+        // A fresh, wider browser render can resolve clipped or overly dense captures.
+        // Never retry an explicitly uncertain answer or reuse a result after cancellation.
+        if (window.__cxHost && !result.ok && ['unrecognized', 'unreadable'].includes(result.status) && !/HTTP|NETWORK|KEY|401|403|超时|网络|密钥|配置/i.test(result.error||'')) {
+          const retryImage = await window.__cxHost.captureQuestion?.({questionId:q.key,minWidth:1600});
+          if (token !== S.token) return false;
+          if (retryImage?.ok) {
+            result = await QuizVision.ask(retryImage.dataUrl, q.key, letters);
+            if (token !== S.token) return false;
+          }
+        }
 
         if (result.ok && result.answers && result.answers.length) {
           S.suggestions[q.key] = {
@@ -486,7 +496,10 @@ const ChapterQuizRunner = (function () {
       return {ok:false,phase:'analyze',error:failures.length?[...new Set(failures)].slice(0,3).join('；'):'未获得可用答案'};
     }
 
-    if(answered.length!==S.quiz.questions.length)return {ok:false,phase:'analyze',error:'还有题目未能识别，已停止自动提交',answered:answered.length,total:S.quiz.questions.length};
+    if(answered.length!==S.quiz.questions.length){
+      const failed=S.quiz.questions.filter(q=>S.suggestions[q.key]?.status!=='ok').map(q=>'第 '+q.num+' 题：'+(S.suggestions[q.key]?.error||'未获得答案'));
+      return {ok:false,phase:'analyze',error:failed.slice(0,3).join('；')+'；未填写或提交本章答案',answered:answered.length,total:S.quiz.questions.length};
+    }
     fillAll({ force: opts.force === true });
 
     const needFill = answered.length;
