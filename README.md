@@ -9,7 +9,7 @@
     <a href="CHANGELOG.md">查看更新日志</a> ·
     <a href="https://github.com/Invariant-325/course-study-utility/issues">反馈问题</a>
   </p>
-  <p><sub>当前正式版：v0.2.7 · <a href="https://github.com/Invariant-325/course-study-utility/releases">测试版与历史版本</a></sub></p>
+  <p><sub>当前正式版：v0.2.8 · <a href="https://github.com/Invariant-325/course-study-utility/releases">测试版与历史版本</a></sub></p>
 </div>
 
 ## 软件预览
