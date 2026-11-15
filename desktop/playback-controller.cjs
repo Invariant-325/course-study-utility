@@ -14,6 +14,8 @@ function createPlaybackController({browser,portal,resources}){
   const values=[];for(const frame of frames()){try{values.push(await frame.executeJavaScript('('+inspectPlayback.toString()+')()'))}catch{}}
   const runner=values.map(v=>v.runner).filter(Boolean).sort((a,b)=>score(b)-score(a))[0]||null;
   const video=values.map(v=>v.video).find(v=>v&&!v.paused&&!v.ended)||values.map(v=>v.video).find(Boolean)||runner?.video||null;
+  let resource=await resources?.status?.();
+  if(resource?.active&&runner&&['stopped','completed','blocked','needsReview'].includes(runner.state)){await resources.stop();resource={active:false};}
   const state=runner?.state||'idle',pending=portal.status().pendingStart;
   const mode=video&&!video.paused&&!video.ended?'playing':pending?'preparing':['locating','settling','advancing'].includes(state)?'preparing':video?.paused&&!video.ended&&state==='playing'?'paused':state==='playing'?'playing':state==='awaitingConfirm'?'waiting':['blocked','needsReview'].includes(state)?'review':state==='paused'?'paused':state==='quizWait'&&runner?.running?'working':['quizWait','awaitingConfirm'].includes(state)?'waiting':'idle';
   return {ok:true,runner,video:resource?.active?resource.media:video,mode:resource?.active?(resource.paused?'paused':'playing'):mode,busy,reason:resource?.active?resource.reason:runner?.awaitingReason||runner?.lastError||runner?.completion?.reasons?.join('; ')||runner?.blockedReason||runner?.noteReason||''};
