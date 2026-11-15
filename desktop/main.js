@@ -26,6 +26,7 @@ const { createCourseBrowser } = require("./course-browser.cjs");
 const { retainLogin } = require("./login-session.cjs");
 const { isPlatformUrl } = require("./browser-policy.cjs");
 const { installFrameBridge } = require("./frame-bridge.cjs");
+let studyResources;
 const sleepGuard=require('./sleep-guard.cjs').createSleepGuard(electron.powerSaveBlocker);
 app.on('before-quit',()=>sleepGuard.close());
 // Preserve the established data directory across the display-name change.
@@ -227,7 +228,8 @@ async function createWindow() {
     preload: path.join(__dirname, 'preload.js'), inject: injectAllFrames, log: bootLog,defaultMuted:store.defaultWebMuted===true });
   // Use the portal's own course-menu handler after normal platform login.
   coursePortal = createCoursePortal({ browser,getStrategy:()=>{try{return JSON.parse(store['cxNaturalWatch:cfg.studyStrategy']||'"auto"')}catch{return 'auto'}},onActivity:active=>sleepGuard.set('runner',active) });
-  playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal});
+  studyResources=require('./study-resource.cjs').createStudyResourceController({browser,win});
+  playbackController=require('./playback-controller.cjs').createPlaybackController({browser,portal:coursePortal,resources:studyResources});
   questionCapture=require('./question-capture.cjs').createQuestionCapture({browser});
   chapterQuizBridge=require('./chapter-quiz-bridge.cjs').createChapterQuizBridge({browser,getPreferences:()=>({quizGateEnabled:store['cxNaturalWatch:cfg.quizGateEnabled']==='true',quizAutoSubmit:store['cxNaturalWatch:cfg.quizAutoSubmit']==='true'})});
   manualQuiz=require('./manual-quiz.cjs').createManualQuiz({browser,portal:coursePortal,playback:playbackController});
@@ -584,6 +586,7 @@ async function askVision(payload) {
 function registerIpc() {
   ipcMain.handle('playback:status',async()=>{const value=playbackController?await playbackController.status():{ok:false};sleepGuard.set('playback',['playing','preparing','working'].includes(value.mode));return value;});
   ipcMain.handle('playback:command',async(_e,action)=>{if(action==='pause'||action==='stop')await manualQuiz?.cancel();else if(manualQuiz?.status().busy)return {ok:false,error:'正在做本章习题，暂停后再开始学习'};return playbackController?playbackController.command(action):{ok:false,error:'页面尚未就绪'};});
+  ipcMain.handle('study:resource',async(event,request)=>{if(event.sender!==(browser?.studyView||browser?.view)?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,error:'不支持的任务来源'};return studyResources?studyResources.invoke(request):{ok:false,error:'任务接口未就绪'};});
   ipcMain.handle('quiz:capture',async(event,request)=>{if(event.sender!==browser?.view?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,reason:'不支持的截图来源'};return questionCapture?questionCapture.capture(request):{ok:false,reason:'截图接口未就绪'};});
   ipcMain.handle('quiz:chapter',async(event,request)=>{if(event.sender!==browser?.view?.webContents||!isPlatformUrl(event.senderFrame?.url))return {ok:false,error:'不支持的来源'};return chapterQuizBridge?chapterQuizBridge.invoke(request):{ok:false};});
   ipcMain.handle('quiz:manual',async(_e,chapter)=>{if(!manualQuiz)return {ok:false,error:'先打开课程'};if(manualQuiz.status().busy)return {ok:false,error:'正在做题，请等待完成'};sleepGuard.set('manual-quiz',true);try{return await manualQuiz.start(chapter)}finally{sleepGuard.set('manual-quiz',false)}});
@@ -596,7 +599,7 @@ function registerIpc() {
     if(patch){
       for(const key of keys){const v=patch[key];if(key==='studyStrategy'?modes.includes(v):typeof v==='boolean')values[key]=v;}
       for(const key of keys)store['cxNaturalWatch:cfg.'+key]=JSON.stringify(values[key]);saveStore();
-      const frames=[];if(browser?.view)collectFrames(browser.view.webContents.mainFrame,frames);
+      const frames=[];if(browser?.view)collectFrames((browser.studyView||browser.view).webContents.mainFrame,frames);
       await Promise.all(frames.filter(f=>isPlatformUrl(f.url)).map(f=>f.executeJavaScript(`(()=>{const c=window.__cxNaturalWatchApp?.config;if(c)for(const [k,v] of Object.entries(${JSON.stringify(values)}))c.set(k,v);return true})()`).catch(()=>false)));
     }
     return values;
@@ -608,9 +611,9 @@ function registerIpc() {
   const progressNamespace=async()=>{const cookies=await browser?.view?.webContents.session.cookies.get({name:'_uid'});const id=cookies?.[0]?.value;return id?require('node:crypto').createHash('sha256').update(id).digest('hex'):null};
   ipcMain.handle('courses:list', async () => {const result=coursePortal?await coursePortal.list():{ok:true,courses:[],state:{phase:'loading'}};const key=await progressNamespace();const cache=key?store.courseProgressByAccount?.[key]||{}:{};result.courses=result.courses.map(c=>({...c,progress:cache[c.id]||null}));return result;});
   ipcMain.handle('courses:refresh', async() => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.refresh():{ok:false};});
-  ipcMain.handle('courses:open', async(_e,id) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.open(id):{ok:false};});
-  ipcMain.handle('course:openChapter', async(_e,chapter) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();return coursePortal?coursePortal.openChapter(chapter):{ok:false};});
-  ipcMain.on('course:domChanged',event=>{if(event.sender===browser?.view?.webContents&&isPlatformUrl(event.senderFrame?.url))notifyCourseChanged();});
+  ipcMain.handle('courses:open', async(_e,id) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();await studyResources?.stop();return coursePortal?coursePortal.open(id):{ok:false};});
+  ipcMain.handle('course:openChapter', async(_e,chapter) => {if(manualQuiz?.status().busy)await manualQuiz.cancel();await studyResources?.stop();return coursePortal?coursePortal.openChapter(chapter):{ok:false};});
+  ipcMain.on('course:domChanged',event=>{if(event.sender===(browser?.studyView||browser?.view)?.webContents&&isPlatformUrl(event.senderFrame?.url))notifyCourseChanged();});
   ipcMain.handle('course:refreshProgress',()=>coursePortal?coursePortal.refreshProgress():{ok:false});
 
   ipcMain.handle('courses:status', () => coursePortal ? coursePortal.status() : {phase:'loading'});
@@ -879,7 +882,7 @@ function registerIpc() {
   // ---------------- 课程总览（仪表盘）----------------
   // 只读：章节列表、待完成数、最近学习记录。不改页面，不推断完成。
   ipcMain.handle('course:overview', async () => {
-    const view = browser && browser.view;
+    const view = browser && (browser.studyView||browser.view);
     if (!view || !view.webContents || view.webContents.isDestroyed()) return { ok: false, reason: 'no-view' };
     const code = `(function(){
       var a = window.__cxNaturalWatchApp;
@@ -927,7 +930,7 @@ function registerIpc() {
           if(known&&old.pending!==item.pending){delete old.videoDone;delete old.quizDone;delete old.complete;}
           if(known)Object.assign(old,{pending:item.pending,complete:item.pending===0});
           for(const field of ['videoDone','quizDone','completed','total'])if(item[field]!==null&&item[field]!==undefined)old[field]=item[field];
-          if(active&&clean(active.title||active.text)===title&&item.pending!==0){const videoDone=finished('video'),quizDone=finished('work');if(old.videoDone==null&&videoDone!==null)old.videoDone=videoDone;if(old.quizDone==null&&quizDone!==null)old.quizDone=quizDone;Object.assign(old,{hasVideo:jobs.some(j=>j.type==='video')||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});}
+          if(active&&clean(active.title||active.text)===title&&item.pending!==0){const resource=jobs.find(j=>['live','reading'].includes(j.type));if(resource){old.resourceKind=resource.type;old.videoDone=item.pending===0;old.quizDone=!jobs.some(j=>j.type==='work');}const videoDone=finished('video'),quizDone=finished('work');if(old.videoDone==null&&videoDone!==null)old.videoDone=videoDone;if(old.quizDone==null&&quizDone!==null)old.quizDone=quizDone;Object.assign(old,{hasVideo:jobs.some(j=>['video','live','reading'].includes(j.type))||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});}
           saved.chapters[title]=old;Object.assign(item,old);
         }
         saved.updatedAt=Date.now();saveStore();

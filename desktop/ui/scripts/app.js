@@ -406,9 +406,10 @@ function bindAccount() {
       const done = Number(sum.done) || 0;
 
       CHAPTERS = items.map((it,index) => ({
+        resourceKind:it.resourceKind||'',hasQuiz:it.hasQuiz,
         key:it.key||'tree-'+index,locked:!!it.locked,videoDone:it.videoDone,quizDone:it.quizDone,complete:it.complete,
         name: String(it.title || '').replace(/\s*\d+\s*个待完成\s*$/, '').trim() || '(未命名章节)',
-        state:it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.completed>0?'partial':it.pending>0?'todo':'unknown',
+        state:it.resourceKind&&it.hasQuiz===false?(it.complete===true||it.pending===0?'done':it.pending>0?'todo':'unknown'):it.complete===true||it.pending===0?'done':it.videoDone===true&&it.quizDone===false?'video':it.videoDone===false&&it.quizDone===true?'quiz':it.completed>0?'partial':it.pending>0?'todo':'unknown',
         pending:it.pending??null,
         current: cursor.jobTitle ? it.title.indexOf(String(cursor.jobTitle).slice(0, 12)) >= 0 : false,
       }));

@@ -61,7 +61,7 @@ function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStra
   const attempted = new Map();
   let openingSince=0;
   function frames() {
-    const wc = browser.view?.webContents;
+    const wc = (browser.studyView||browser.view)?.webContents;
     if (!wc || wc.isDestroyed()) return [];
     const out = [], queue = [wc.mainFrame];
     while (queue.length && out.length < 100) { const f=queue.shift(); try { if(isPlatformUrl(f.url))out.push(f); queue.push(...f.frames); } catch {} }

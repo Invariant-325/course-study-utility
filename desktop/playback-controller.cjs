@@ -6,17 +6,17 @@ function inspectPlayback(){
  const video=videos.find(v=>!v.paused&&!v.ended)||videos[0];
  return {runner:snap,video:video?{paused:video.paused,ended:video.ended,currentTime:Number(video.currentTime)||0,duration:Number.isFinite(video.duration)?video.duration:0}:null};
 }
-function createPlaybackController({browser,portal}){
+function createPlaybackController({browser,portal,resources}){
  let busy=false;
  const score=r=>(r?.jobTitle?100:0)+(r?.running?30:0)+(['playing','paused'].includes(r?.state)?20:['needsReview','blocked','awaitingConfirm'].includes(r?.state)?10:0);
- function frames(){const root=browser.view?.webContents?.mainFrame;if(!root)return [];const all=[],queue=[root];while(queue.length&&all.length<100){const frame=queue.shift();try{if(isPlatformUrl(frame.url))all.push(frame);queue.push(...frame.frames)}catch{}}return all;}
+ function frames(){const root=(browser.studyView||browser.view)?.webContents?.mainFrame;if(!root)return [];const all=[],queue=[root];while(queue.length&&all.length<100){const frame=queue.shift();try{if(isPlatformUrl(frame.url))all.push(frame);queue.push(...frame.frames)}catch{}}return all;}
  async function status(){
   const values=[];for(const frame of frames()){try{values.push(await frame.executeJavaScript('('+inspectPlayback.toString()+')()'))}catch{}}
   const runner=values.map(v=>v.runner).filter(Boolean).sort((a,b)=>score(b)-score(a))[0]||null;
   const video=values.map(v=>v.video).find(v=>v&&!v.paused&&!v.ended)||values.map(v=>v.video).find(Boolean)||runner?.video||null;
   const state=runner?.state||'idle',pending=portal.status().pendingStart;
   const mode=video&&!video.paused&&!video.ended?'playing':pending?'preparing':['locating','settling','advancing'].includes(state)?'preparing':video?.paused&&!video.ended&&state==='playing'?'paused':state==='playing'?'playing':state==='awaitingConfirm'?'waiting':['blocked','needsReview'].includes(state)?'review':state==='paused'?'paused':state==='quizWait'&&runner?.running?'working':['quizWait','awaitingConfirm'].includes(state)?'waiting':'idle';
-  return {ok:true,runner,video,mode,busy,reason:runner?.awaitingReason||runner?.lastError||runner?.completion?.reasons?.join('; ')||runner?.blockedReason||runner?.noteReason||''};
+  return {ok:true,runner,video:resource?.active?resource.media:video,mode:resource?.active?(resource.paused?'paused':'playing'):mode,busy,reason:resource?.active?resource.reason:runner?.awaitingReason||runner?.lastError||runner?.completion?.reasons?.join('; ')||runner?.blockedReason||runner?.noteReason||''};
  }
  async function command(action){
   if(busy)return {ok:false,error:'操作正在执行'};
@@ -24,12 +24,12 @@ function createPlaybackController({browser,portal}){
   busy=true;
   try{
    if(action==='pause'||action==='stop'){
-    portal.cancelStart();
+    portal.cancelStart();if(action==='stop')await resources?.stop?.();else await resources?.pause?.();
     for(const frame of frames())await frame.executeJavaScript(`(()=>{const r=window.__cxNaturalWatchApp?.runner;if(r){if(${JSON.stringify(action)}==='pause'){if(r.pause?.()===false)r.stop?.();}else r.stop?.();}for(const v of document.querySelectorAll('video'))v.pause();return true})()`,true).catch(()=>false);
     return {ok:true};
    }
    const observed=await status();
-   const pausedMedia=!!observed.video?.paused&&!observed.video?.ended;
+   const pausedMedia=observed.mode==='paused'||!!observed.video?.paused&&!observed.video?.ended;
    const candidates=[];for(const frame of frames()){const value=await frame.executeJavaScript('('+inspectPlayback.toString()+')()').catch(()=>null);if(value?.runner)candidates.push({frame,runner:value.runner});}
    candidates.sort((a,b)=>score(b.runner)-score(a.runner));
    for(const {frame} of candidates){

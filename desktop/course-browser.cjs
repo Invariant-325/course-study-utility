@@ -2,7 +2,7 @@ const { PORTAL_URL, isPlatformUrl, isAllowedNavigationUrl, isLandingUrl, clickCo
 
 function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, defaultMuted = false }) {
   const pages = [];
-  let active, closing = false;
+  let active, closing = false, pinnedStudy = null;
   const states = new WeakMap();
   const blocked = () => {
     if(active)states.get(active).error='已阻止不受信任的网页：仅允许 HTTPS 平台页面';
@@ -97,14 +97,14 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
       }
     } finally { state.routing = false; }
   }
-  function create(options = {}) {
+  function create(options = {}, opener = null) {
     const page = new WebContentsView({ ...(options.webContents ? {webContents: options.webContents} : {}), webPreferences: { ...options.webPreferences,
       session: ses, preload, contextIsolation: true, nodeIntegration: false,webSecurity:true,allowRunningInsecureContent:false,
       nodeIntegrationInSubFrames: false, sandbox: true, backgroundThrottling: false } });
     page.webContents.setAudioMuted(defaultMuted);
     page.setBackgroundColor('#ffffff');
     const wc = page.webContents;
-    const state = { error: '', lastGood: PORTAL_URL, routing: false, recovered: false,
+    const state = { opener, error: '', lastGood: PORTAL_URL, routing: false, recovered: false,
       epoch: 0, menuOpened: false, routeAttempts: 0, routeTimer: null };
     states.set(page, state);
     pages.push(page);
@@ -117,7 +117,7 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
       return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: {
         session: ses, preload, contextIsolation: true, sandbox: true,webSecurity:true,allowRunningInsecureContent:false,
         nodeIntegration: false, nodeIntegrationInSubFrames: false,
-      } }, createWindow: opts => create(opts).webContents };
+      } }, createWindow: opts => create(opts,page).webContents };
     });
     wc.on('will-navigate', (event, url) => {
       if (!isAllowedNavigationUrl(url)) {event.preventDefault();blocked();}
@@ -161,6 +161,11 @@ function createCourseBrowser({ win, WebContentsView, ses, preload, inject, log, 
   win.on('restore', () => { layout(); if (active) active.webContents.invalidate(); });
   return {
     get view() { return active; },
+    get studyView() { return pinnedStudy && pages.includes(pinnedStudy) ? pinnedStudy : active; },
+    views() { return pages.filter(p=>!p.webContents.isDestroyed()); },
+    resourceViews(parent,initialIds,target) { return pages.filter(page=>{if(page===parent||page===target)return true;if(initialIds.includes(page.webContents.id))return false;let p=page;for(let n=0;n<12;n++){p=states.get(p)?.opener;if(!p)return false;if(p===parent)return true;}return false;}); },
+    pinStudy(page) { if(pages.includes(page))pinnedStudy=page; },
+    finishStudyResource(parent,initialIds) { for(const page of this.resourceViews(parent,initialIds))if(page!==parent)dispose(page);if(pages.includes(parent))activate(parent);pinnedStudy=null; },
     setMuted(value) {defaultMuted=!!value;for(const p of pages)if(!p.webContents.isDestroyed())p.webContents.setAudioMuted(defaultMuted);},
     setVisible: setViewVisible,
     isVisible: isViewVisible,

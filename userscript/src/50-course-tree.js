@@ -320,11 +320,11 @@ const CourseTree = (function () {
         skipped.push(job);
         continue;
       }
-      if (job.state === 'unknown') {
+      if (job.state === 'unknown' && !(['live','reading'].includes(job.type)&&catalogProgress().items.some(i=>i.active&&i.pending>0))) {
         skipped.push(job);
         continue;
       }
-      if (job.type === 'video' || job.type === 'unknown') {
+      if (['video','live','reading','unknown'].includes(job.type)) {
         if (job.type === 'unknown') {
           if (!findVideoInJob(job)) {
             skipped.push(job);

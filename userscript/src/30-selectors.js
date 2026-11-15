@@ -105,6 +105,8 @@ const SEL = {
   // ===== iframe src 类型判定 =====
   // [DR] /ananas/modules/<type>/
   jobTypePatterns: [
+    { type: 'live', re: /\/ananas\/modules\/live\//i },
+    { type: 'reading', re: /\/ananas\/modules\/read\//i },
     { type: 'video', re: /\/ananas\/modules\/video\//i },
     { type: 'audio', re: /\/ananas\/modules\/audio\//i },
     { type: 'document', re: /\/ananas\/modules\/(doc|pdf|ppt)\//i },

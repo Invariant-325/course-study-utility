@@ -311,6 +311,25 @@ const Runner = (function () {
   }
 
   // ---------------- 播放一个任务点 ----------------
+  async function playStudyResource(job,token){
+    if(!window.__cxHost?.studyTask){enterNeedsReview('直播回放和阅读需要桌面应用支持，请在网页打开任务');return;}
+    VideoCtl.detach();
+    const chapter=CourseTree.activeCatalogKey?.()||'';
+    const opened=await window.__cxHost.studyTask({action:'open',kind:job.type,chapter});
+    if(isStale(token))return;if(!opened?.ok){enterNeedsReview(opened?.error||'未能打开课程任务');return;}
+    sm.go('playing','study-resource-opened');publish();
+    while(!isStale(token)&&R.running){
+      const status=await window.__cxHost.studyTask({action:'status',chapter});if(isStale(token))return;
+      if(!status?.ok||!status.active){enterNeedsReview(status?.error||'课程任务已关闭');return;}
+      if(status.paused){pause();R.awaitingReason=status.reason||'请保持窗口在前台后继续';publish();return;}
+      await CourseTree.refreshCatalog?.();if(isStale(token))return;
+      if((CourseTree.currentCatalogComplete?.()||(job.container?.isConnected&&CourseTree.readJobState(job.container).state==='finished'))&&(job.type==='reading'||Config.get('advanceOnPlatformComplete')!==false||status.mediaEnded)){
+        await window.__cxHost.studyTask({action:'finish',chapter});if(isStale(token))return;R.confirmedCount++;sm.go('settling','platform-confirmed');await advance(token);return;
+      }
+      await Dom.waitTimeout(5000);
+    }
+  }
+
   async function playJob(job, token, options) {
     const opts = options || {};
     if (isStale(token) || !job) return;
@@ -319,6 +338,7 @@ const Runner = (function () {
     R.currentTitle = job.title;
     if (sm.state() !== 'locating') sm.go('locating', 'job-selected');
     publish();
+    if(['live','reading'].includes(job.type)){await playStudyResource(job,token);return;}
 
     let video = null;
     const attempts = Math.max(1, Number(Config.get('locateMaxAttempts')) || 6);
@@ -479,7 +499,7 @@ const Runner = (function () {
     if(progress.ok&&progress.total>0&&progress.unknown===0&&progress.pending===0)return {verdict:'complete',videoComplete:true,pendingOthers:0,totalLeaves:progress.total,reasons:[],catalog:progress,summary};
 
     const videoUnfinished = jobs.filter(function (job) {
-      return job.state === 'unfinished' && (job.type === 'video' || job.type === 'unknown');
+      return job.state === 'unfinished' && (['video','live','reading','unknown'].includes(job.type));
     });
     const unknownJobs = jobs.filter(function (job) {
       return job.state === 'unknown';
@@ -1043,6 +1063,7 @@ const Runner = (function () {
     return true;
   }
 
+  function stopHostStudy(action='pause'){window.__cxHost?.studyTask?.({action})?.catch?.(()=>{});}
   function stopHostQuiz(){window.__cxHost?.chapterQuiz?.({action:'stop',chapter:CourseTree.activeCatalogKey?.()||''})?.catch?.(()=>{});}
   function pause() {
     const state = sm.state();
@@ -1053,7 +1074,7 @@ const Runner = (function () {
     R.runToken++;
     R.running = false;
     const video = VideoCtl.current();
-    stopHostQuiz();
+    stopHostQuiz();stopHostStudy();
     stopQuiz();
     stopAll();
     if (video) {
@@ -1118,7 +1139,7 @@ const Runner = (function () {
   function stop() {
     R.runToken++;
     R.running = false;
-    stopHostQuiz();
+    stopHostQuiz();stopHostStudy('stop');
     stopQuiz();
     const video = VideoCtl.current();
     stopAll();
@@ -1280,7 +1301,7 @@ const Runner = (function () {
       const result=force&&typeof CourseTree.refreshCatalog==='function'?await CourseTree.refreshCatalog(true):{ok:live.ok,source:'live-catalog'};
       if(!force&&typeof CourseTree.refreshCatalog==='function')CourseTree.refreshCatalog(false).catch(()=>{});
       if(!isStale(token)&&R.running&&sm.state()==='needsReview'&&R.reviewCatalogSignature!==JSON.stringify(CourseTree.catalogProgress().items)){resume();return result;}
-      if(!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
+      if(!['live','reading'].includes(R.currentJob?.type)&&!isStale(token)&&R.running&&sm.state()==='playing'&&Config.get('advanceOnPlatformComplete')!==false&&(CourseTree.currentCatalogComplete?.()||(R.currentJob?.container?.isConnected&&CourseTree.readJobState(R.currentJob.container).state==='finished'))){
         const video=VideoCtl.current();stopWatchdog();VideoCtl.detach();if(video)video.pause();
         Log.info('平台已确认当前视频任务完成，停止播放并检查本章后续任务');sm.go('settling','platform-confirmed');sm.go('advancing','platform-confirmed');goAdvance(token);
       }
