@@ -2980,7 +2980,7 @@ const Runner = (function () {
     while(!isStale(token)&&R.running){
       const status=await window.__cxHost.studyTask({action:'status',chapter});if(isStale(token))return;
       if(!status?.ok||!status.active){enterNeedsReview(status?.error||'课程任务已关闭');return;}
-      if(status.paused){pause();R.awaitingReason=status.reason||'请保持窗口在前台后继续';publish();return;}
+      if(status.paused){pause();R.awaitingReason=status.reason||'已暂停，点击继续恢复';publish();return;}
       await CourseTree.refreshCatalog?.();if(isStale(token))return;
       if((CourseTree.currentCatalogComplete?.()||(job.container?.isConnected&&CourseTree.readJobState(job.container).state==='finished'))&&(job.type==='reading'||Config.get('advanceOnPlatformComplete')!==false||status.mediaEnded)){
         await window.__cxHost.studyTask({action:'finish',chapter});if(isStale(token))return;R.confirmedCount++;sm.go('settling','platform-confirmed');await advance(token);return;

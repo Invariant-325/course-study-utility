@@ -22,7 +22,6 @@ function createStudyResourceController({browser,win}){
   if(current.parent.webContents.isDestroyed()||await activeChapter(current.parent.webContents)!==current.chapter){if(task===current)await stop();return {ok:false,active:false,error:'当前章节已切换，已停止原任务'}}
   if(task!==current)return {ok:true,active:false};
   const foreground=!win.isMinimized()&&win.isFocused()&&browser.isVisible()&&(!current.target?browser.view===current.parent:browser.view!==current.parent&&browser.resourceViews(current.parent,current.initialIds,current.target).includes(browser.view));
-  if(!foreground&&!current.paused)await pause('直播回放和阅读需保持窗口在前台，点击继续后恢复');if(task!==current)return {ok:true,active:false};
   let media=null;for(const view of browser.resourceViews(current.parent,current.initialIds,current.target))for(const f of frames(view.webContents)){const v=await f.executeJavaScript('(()=>{const v=[...document.querySelectorAll("video")].find(v=>v.isConnected);return v?{paused:v.paused,ended:v.ended,currentTime:Number(v.currentTime)||0,duration:Number.isFinite(v.duration)?v.duration:0}:null})()').catch(()=>null);if(v)media=v}
   if(task!==current)return {ok:true,active:false};
   return {ok:true,active:true,kind:current.kind,paused:current.paused,foreground,media,mediaEnded:media?.ended===true,reason:current.paused?current.pauseReason:current.kind==='reading'?'正在阅读，完成情况以平台记录为准':'正在观看回放，等待平台记录进度'};
@@ -34,7 +33,7 @@ function createStudyResourceController({browser,win}){
   if(task&&task.chapter===chapter&&task.kind===request.kind&&!task.paused)return {ok:true,active:true};
   busy=true;
   try{
-   if(task)await stop();task={parent,chapter,kind:request.kind,paused:false,initialIds:browser.views().map(v=>v.webContents.id)};browser.pinStudy(parent);browser.setVisible(true);if(win.isMinimized())win.restore();win.show();win.focus();
+   if(task)await stop();task={parent,chapter,kind:request.kind,paused:false,initialIds:browser.views().map(v=>v.webContents.id)};browser.pinStudy(parent);
    const pattern=request.kind==='live'?'/ananas/modules/live/':'/mooc-ans/coursedata/readjobv2/';let opened=false;
    for(let attempt=0;attempt<20&&!opened;attempt++){
     if(!task||task.paused||await activeChapter(parent.webContents)!==chapter){await stop();return {ok:false,error:'章节已变化或任务已暂停'};}
