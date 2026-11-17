@@ -933,7 +933,7 @@ function registerIpc() {
           if(active&&clean(active.title||active.text)===title&&item.pending!==0){const resource=jobs.find(j=>['live','reading'].includes(j.type));if(resource){old.resourceKind=resource.type;old.videoDone=item.pending===0;old.quizDone=!jobs.some(j=>j.type==='work');}const videoDone=finished('video'),quizDone=finished('work');if(old.videoDone==null&&videoDone!==null)old.videoDone=videoDone;if(old.quizDone==null&&quizDone!==null)old.quizDone=quizDone;Object.assign(old,{hasVideo:jobs.some(j=>['video','live','reading'].includes(j.type))||data.tabs?.video===true,hasQuiz:jobs.some(j=>j.type==='work')||data.tabs?.quiz===true});}
           saved.chapters[title]=old;Object.assign(item,old);
         }
-        saved.updatedAt=Date.now();saveStore();
+        if(jobs.some(j=>['video','live','reading'].includes(j.type))||data.tabs?.video===true)saved.learningContent='yes';else if(data.emptyCatalog===true)saved.learningContent='none';saved.updatedAt=Date.now();saveStore();
       }
       return {ok:true,data};
     } catch (e) {

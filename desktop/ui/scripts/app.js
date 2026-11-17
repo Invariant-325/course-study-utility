@@ -389,6 +389,7 @@ function bindAccount() {
       if (catalog && catalog.ok) {
         PROFILE=catalog.profile||PROFILE;renderAccount();
         COURSES = catalog.courses.map(c => ({...c,unit:c.progress?.summary?.unit,total:c.progress?.summary?.total??null,done:c.progress?.summary?.done??0,state:c.id === selectedCourse ? (RUNNER.snap?.state === 'playing' ? 'doing' : 'selected') : 'unknown'}));
+        const contentRank=c=>c.progress?.learningContent==='yes'?0:c.progress?.learningContent==='none'?2:1;COURSES.sort((a,b)=>contentRank(a)-contentRank(b));
         const counter = $('#courseCount'); if (counter) counter.textContent = String(COURSES.length);
       }
     }

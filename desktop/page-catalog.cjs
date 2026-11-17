@@ -16,6 +16,7 @@ function inspectCatalog(clean, action = null, doc = document, readProgress = rea
     });
     nodes = nodes.filter(e => !nodes.some(other => other !== e && e.contains(other)));
   }
+  if(!nodes.length&&/暂无章节|暂无课程内容|还没有章节|暂无目录/.test(doc.body?.textContent||''))return {ok:true,source:'course-page',items:[],jobs:[],emptyCatalog:true};
   const rows = nodes.flatMap((node,index) => {
     const target=clickable(node);
     if (!target || node.matches('.posCatalog_first,.firstLayer,.chapter-heading,.chapter_head')) return [];

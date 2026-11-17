@@ -47,9 +47,9 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": true,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "课程伴学工具",
@@ -64,7 +64,11 @@
       ],
       "language": "2052",
       "differentialPackage": false,
-      "artifactName": "CourseStudyUtility-${version}-Setup-${arch}.exe"
+      "artifactName": "CourseStudyUtility-${version}-Setup-${arch}.exe",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/installer-sidebar.bmp",
+      "installerHeader": "build/installer-header.bmp",
+      "include": "build/installer.nsh"
     },
     "executableName": "CourseStudyUtility",
     "electronLanguages": [
