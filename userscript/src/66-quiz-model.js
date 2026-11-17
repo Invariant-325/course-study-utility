@@ -362,3 +362,5 @@ const QuizModel = (function () {
     findRoot,
   };
 })();
+
+if (typeof window !== "undefined") window.__cxVideoQuiz = {parse: () => QuizModel.parse(document)};

@@ -18,6 +18,8 @@ app.whenReady().then(async()=>{
    for(let n=0;n<bitmap.length;n+=4)if(bitmap[n+channel]>200&&[0,1,2].filter(c=>c!==channel).every(c=>bitmap[n+c]<40))matching++;
    assert(matching>100,'capture must contain the selected question diagram, not a stale or blank crop');assert.deepEqual(view.getBounds(),before);assert.equal(await view.webContents.executeJavaScript('scrollY'),0);
   }
+  await view.webContents.executeJavaScript('window.__cxVideoQuiz={parse:()=>({ok:true,hash:"test-video",root:document.querySelectorAll(".TiMu")[1]})};true');
+  const video=await capture.capture({questionId:'video-quiz:test-video'});assert(video.ok,video.reason);assert.equal(video.source,'browser-screenshot');assert.equal((await capture.capture({questionId:'video-quiz:stale'})).ok,false);
   assert.equal((await capture.capture({questionId:'missing-question'})).ok,false);
   console.log('PASS six hidden captures: smooth-scroll positions, missing decorative font, per-question colored SVG, wider retry, unchanged original viewport and scroll; unknown key rejected');
  }catch(e){console.error(e.stack);process.exitCode=1}finally{win?.destroy();app.exit(process.exitCode||0)}

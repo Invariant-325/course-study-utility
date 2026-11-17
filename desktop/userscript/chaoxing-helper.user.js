@@ -2204,6 +2204,8 @@ const QuizModel = (function () {
   };
 })();
 
+if (typeof window !== "undefined") window.__cxVideoQuiz = {parse: () => QuizModel.parse(document)};
+
 // ===========================================================================
 // 67-llm.js
 // ===========================================================================
@@ -4067,7 +4069,8 @@ const QuizRunner = (function () {
       submitted: S.submitted,
       ai: Llm.stats(),
       llmConfig: (function () {
-        const cfg = Llm.readConfig();
+        const nativeVision=!!window.__cxHost;
+      const cfg = nativeVision ? QuizVision.readConfig() : Llm.readConfig();
         return {
           enabled: cfg.enabled,
           mode: cfg.mode,
@@ -4166,7 +4169,8 @@ const QuizRunner = (function () {
       S.submitted = false;
       S.error = '';
 
-      const cfg = Llm.readConfig();
+      const nativeVision=!!window.__cxHost;
+      const cfg = nativeVision ? QuizVision.readConfig() : Llm.readConfig();
       if (!cfg.enabled) {
         S.phase = PHASE.manual;
         S.error = 'AI 未开启（面板里打开"AI 弹题"并配置模型后才调用）';
@@ -4179,7 +4183,15 @@ const QuizRunner = (function () {
       publish();
       Log.info('检测到弹题，请求模型：' + question.stem.slice(0, 40));
 
-      const result = await Llm.ask(question);
+      let result;
+      if(nativeVision){
+        const questionId='video-quiz:'+question.hash;
+        const image=await window.__cxHost.captureQuestion({questionId});
+        if(!image?.ok)throw new Error(image?.reason||'视频题目截图失败');
+        const response=await QuizVision.ask(image.dataUrl,questionId,question.options.map(o=>o.letter));
+        result=response.ok?{ok:true,payload:{letters:response.answers,confidence:0,uncertain:false}}:response;
+      }else result=await Llm.ask(question);
+      if(QuizModel.parse(document).hash!==question.hash)return;
       if (!running) return;
 
       if (!result.ok) {
