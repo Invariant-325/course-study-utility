@@ -172,6 +172,7 @@ function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStra
   }
   const timer=setInterval(tick,interval); timer.unref?.();
   return {
+    scanCandidates() {return [...courses.values()].map(({id,url})=>({id,url}));},
     async list() { await tick(); return {ok:true,courses:[...courses.values()].map(({id,name,cover})=>({id,name,cover})),state:{...state},profile:{...profile}}; },
     status() { return {...state,pendingStart,...(browser.info?.().error?{error:browser.info().error}:{})}; },
     async overview() {
