@@ -49,8 +49,14 @@ function enterStudyPage() {
   const a = [...document.querySelectorAll('a[href]')].find(a => {
     try { const u = new URL(a.href, location.href); return /^https?:$/.test(u.protocol) && /(^|\.)(chaoxing|xuexitong)\.com$/i.test(u.hostname) && /\/mycourse\/studentstudy(?:\/|$)/i.test(u.pathname); } catch { return false; }
   });
-  if (!a) return false;
-  a.click(); return true;
+  if (a) {a.click();return true;}
+  // Some courses land on the activity page. Use its existing chapter menu.
+  const menu=[...document.querySelectorAll('a,[role=button],[onclick]')].find(e=>{
+    if(!/^章节$/.test((e.textContent||'').replace(/\s+/g,''))||!e.getClientRects().length)return false;
+    const href=e.getAttribute('href');if(!href||/^(?:#|javascript:)/i.test(href))return true;
+    try{const u=new URL(href,location.href);return u.protocol==='https:'&&/(^|\.)(chaoxing|xuexitong)\.com$/i.test(u.hostname)}catch{return false}
+  });
+  if(!menu)return false;menu.click();return true;
 }
 
 function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStrategy=()=> 'auto' }) {
@@ -225,4 +231,4 @@ function createCoursePortal({ browser, interval = 1800,onActivity=()=>{},getStra
     tick,
   };
 }
-module.exports={createCoursePortal,readCourseLinks,readChallenge};
+module.exports={createCoursePortal,readCourseLinks,readChallenge,enterStudyPage};
