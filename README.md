@@ -5,11 +5,11 @@
   <p>在一个窗口里选课、查看章节进度，安排视频与习题。<br>需要题目辅助时，在设置中填写自己的模型密钥。</p>
   <p>Windows 10 / 11 · x64 · 开源免费 · GPL-3.0-only</p>
   <p>
-    <a href="https://github.com/Invariant-325/course-study-utility/releases/latest"><strong>下载最新稳定版</strong></a> ·
+    <a href="https://github.com/Invariant-325/course-study-utility/releases/tag/v0.3.0-beta.1"><strong>下载推荐版（beta.1）</strong></a> ·
     <a href="CHANGELOG.md">查看更新日志</a> ·
     <a href="https://github.com/Invariant-325/course-study-utility/issues">反馈问题</a>
   </p>
-  <p><sub>当前正式版：v0.2.8 · <a href="https://github.com/Invariant-325/course-study-utility/releases">测试版与历史版本</a></sub></p>
+  <p><sub><a href="https://github.com/Invariant-325/course-study-utility/releases/latest">最新正式版</a> · <a href="https://github.com/Invariant-325/course-study-utility/releases">测试版与历史版本</a></sub></p>
 </div>
 
 ## 软件预览
@@ -44,7 +44,7 @@
 
 ## 快速开始
 
-1. [下载最新稳定版](https://github.com/Invariant-325/course-study-utility/releases/latest)，选择 `Setup-x64.exe` 安装程序。更新前先从系统托盘退出旧程序。
+1. [下载推荐版 v0.3.0-beta.1](https://github.com/Invariant-325/course-study-utility/releases/tag/v0.3.0-beta.1)，选择 Windows x64 安装向导。更新前先从系统托盘退出旧程序。
 2. 启动应用，通过顶部“网页”入口按平台要求登录。课程要求刷脸时，用本人手机完成二维码验证。
 3. 在主页选择课程，进入学习工作区，选择学习方式后开始。
 
