@@ -352,7 +352,7 @@ const SEL = {
   // 注意：不要用 [class*="tab"] 这种宽泛选择器——实机验证时它误匹配到了
   // 页面里无关的隐藏文本（"请输入验证码…"），导致任务类型判断被污染。
   taskTabVideo: /课程视频|视频/,
-  taskTabQuiz: /章节测验|测验|作业/,
+  taskTabQuiz: /章节测验|测验|作业|课后测试|课后练习/,
   taskTabSelector: '.prev_white, .prev_title',
 
   // ===== 页面级"下一节"按钮 =====
@@ -1239,7 +1239,7 @@ const CourseTree = (function () {
     const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:document}];
     for(const {doc} of docs)for(const node of doc.querySelectorAll('a,button,[role=tab],.prev_white,.prev_title,.prev_list li')){
       const label=Dom.textOf(node,80).replace(/\s+/g,'');
-      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题)$/.test(label))continue;
+      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题|课后测验|课后测试|课后练习|随堂测验)$/.test(label))continue;
       if(Dom.click(node))return {ok:true,by:'chapter-quiz-tab'};
     }
     return {ok:false,reason:'no-quiz-tab'};
@@ -2668,6 +2668,7 @@ const StateMachine = (function () {
 // 绝不把"视频播完"当成"平台确认完成"。
 // ---------------------------------------------------------------------------
 const Runner = (function () {
+  const UNCLASSIFIED_TASK = 'unclassified-task';
   const R = {
     hooks: {},
     runToken: 0,
@@ -2875,13 +2876,13 @@ const Runner = (function () {
   }
 
   // 证据不足导致无法确认完成：这是"不确定"，不是"失败"，也不是"完成"
-  function enterNeedsReview(reason, completion) {
+  function enterNeedsReview(reason, completion, stateReason = reason) {
     stopAll();
     R.awaitingReason=reason;
     if (completion) R.completion = completion;
     Log.warn('无法确认完成：' + reason);
     R.reviewCatalogSignature=JSON.stringify(CourseTree.catalogProgress().items);
-    sm.go('needsReview', reason);
+    sm.go('needsReview', stateReason);
     publish();
   }
 
@@ -3246,7 +3247,7 @@ const Runner = (function () {
       if(window.__cxHost?.chapterQuiz){if(!tabs.quiz){const read=await window.__cxHost.chapterQuiz({action:'tabs',chapter:CourseTree.activeCatalogKey?.()||''});tabs=read?.tabs||tabs;}hostReady=(await window.__cxHost.chapterQuiz({action:'status',chapter:CourseTree.activeCatalogKey?.()||''}))?.ready===true;}
       const ready=ChapterQuizRunner.isQuizPage()||hostReady;
       if(ready||(tabs?.quiz&&videos.length&&videos.every(j=>j.state==='finished'))){
-        if(!ready){let opened=CourseTree.openQuizTab?.();if(!opened?.ok&&window.__cxHost?.chapterQuiz){const result=await window.__cxHost.chapterQuiz({action:'open',chapter:CourseTree.activeCatalogKey?.()||''});opened={ok:result?.opened===true};}if(!opened?.ok)return 'none';openedTab=true;}
+        if(!ready){let opened=CourseTree.openQuizTab?.();if(!opened?.ok&&window.__cxHost?.chapterQuiz){const result=await window.__cxHost.chapterQuiz({action:'open',chapter:CourseTree.activeCatalogKey?.()||''});opened={ok:result?.opened===true};}if(!opened?.ok)return 'entry-unavailable';openedTab=true;}
         const key='chapter-quiz:'+(CourseTree.activeCatalogKey?.()||'current');
         if(R.handledWork.has(key)){enterQuizManual('本章习题已提交，正在等待平台更新完成状态');return 'blocked';}
         pending=[{id:key,stableKey:key,type:'work',state:'unfinished'}];
@@ -3317,7 +3318,7 @@ const Runner = (function () {
   }
 
   // ---------------- 推进 ----------------
-  async function advance(token) {
+  async function advance(token, continuePastUnclassified = false) {
     if (isStale(token)) return;
     R.advanceGuard++;
     if (R.advanceGuard > 200) {
@@ -3350,16 +3351,25 @@ const Runner = (function () {
       await advance(token);
       return;
     }
-    if (gate === 'blocked') return;
+    if (isStale(token) || gate === 'blocked') return;
 
     if(typeof CourseTree.refreshCatalog==='function')await CourseTree.refreshCatalog();
     if(isStale(token))return;
     if(Config.get('studyStrategy')==='auto'){
       const active=CourseTree.catalogProgress().items.find(i=>i.active);
       const jobs=CourseTree.enumerateDetail().jobs;
-      if(active?.pending!==0&&(jobs.some(j=>j.state==='unfinished'||j.state==='unknown')||!active||active.pending!==0)){
-        if(Config.get('quizGateEnabled')===false&&jobs.some(j=>j.type==='work'&&j.state!=='finished'))enterQuizManual('本章习题未完成，自动做题已关闭。开启自动做题，或选择章节后点击做题并提交。');
-        else enterNeedsReview('本章仍有未处理的任务，自动切换习题入口失败，请查看课程网页');return;
+      const tabs=CourseTree.readTaskTabs?.()||{};
+      const unfinishedQuiz=jobs.some(j=>j.type==='work'&&j.state!=='finished');
+      const onlyFinishedMedia=jobs.length>0&&jobs.every(j=>['video','live','reading'].includes(j.type)&&j.state==='finished');
+      const quizKnown=gate==='entry-unavailable'||tabs.quiz||unfinishedQuiz;
+      const mediaPending=jobs.some(j=>['video','live','reading'].includes(j.type)&&j.state!=='finished');
+      const canAdvance=active&&!quizKnown&&(onlyFinishedMedia&&tabs.video===true||continuePastUnclassified&&!mediaPending);
+      if(active?.pending!==0&&!canAdvance){
+        if(Config.get('quizGateEnabled')===false&&unfinishedQuiz)enterQuizManual('本章习题未完成，自动做题已关闭。开启自动做题，或选择章节后点击做题并提交。');
+        else if(quizKnown)enterNeedsReview('检测到本章习题，但未能打开。可以在课程网页打开习题后继续。');
+        else if(!active||mediaPending)enterNeedsReview('当前章节或视频状态尚未确认。点击继续重新检查本章。');
+        else enterNeedsReview('目录仍有待完成项，但未找到可处理的任务。点击继续查看下一节。', undefined, UNCLASSIFIED_TASK);
+        return;
       }
     }
     // 2) 切换下一节
@@ -3774,6 +3784,7 @@ const Runner = (function () {
     R.running = true;
     R.resumeAttempts = 0;
     R.playRejectCount = 0;
+    const continuePastUnclassified=state==='needsReview'&&sm.noteReason()===UNCLASSIFIED_TASK;
     R.awaitingReason='';R.lastError='';
     Log.info('继续');
     publish();
@@ -3789,7 +3800,8 @@ const Runner = (function () {
           return;
         }
       }
-      await locateAndPlay(token, R.currentJob ? R.currentJob.id : null);
+      if(continuePastUnclassified)await advance(token,true);
+      else await locateAndPlay(token, R.currentJob ? R.currentJob.id : null);
     })().catch(function (e) {
       Log.error('继续失败：' + (e && e.message));
       block('继续失败：' + (e && e.message));

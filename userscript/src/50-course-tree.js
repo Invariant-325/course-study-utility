@@ -407,7 +407,7 @@ const CourseTree = (function () {
     const docs=Dom.collectDocuments(window,SEL.maxFrameDepth).documents||[{doc:document}];
     for(const {doc} of docs)for(const node of doc.querySelectorAll('a,button,[role=tab],.prev_white,.prev_title,.prev_list li')){
       const label=Dom.textOf(node,80).replace(/\s+/g,'');
-      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题)$/.test(label))continue;
+      if(!/^\d*(?:章节测验|本章测验|章节习题|本章习题|课后测验|课后测试|课后练习|随堂测验)$/.test(label))continue;
       if(Dom.click(node))return {ok:true,by:'chapter-quiz-tab'};
     }
     return {ok:false,reason:'no-quiz-tab'};

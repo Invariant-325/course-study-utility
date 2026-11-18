@@ -49,3 +49,20 @@ test('仅补测验不会选择未完成视频，没有开启做题时明确停�
  const e=loadEnv(files);let picks=0;e.exports.Config.set('studyStrategy','quiz-only');e.exports.CourseTree.pickNextVideoTarget=()=>{picks++;return {job:{}}};
  try{e.exports.Runner.start();await new Promise(r=>setTimeout(r,50));assert.equal(picks,0);assert.equal(e.exports.Runner.state(),'blocked');}finally{e.exports.Runner.stop();e.window.close()}
 });
+
+for(const scenario of ['video-tab','continue','quiz-tab'])test('目录计数未更新时按任务证据决定是否推进 '+scenario,async()=>{
+ const e=loadEnv(files);const {Runner,CourseTree}=e.exports;let advanced=0;
+ const job={id:'video',type:'video',state:'finished'};
+ CourseTree.enumerateDetail=()=>({jobs:[job],inaccessible:[],stats:{unfinished:0,unknown:0,finished:1,documentCount:1}});
+ CourseTree.catalogProgress=()=>({items:[{active:true,pending:1}],ok:true,unknown:0,pending:1});
+ CourseTree.readTaskTabs=()=>({video:scenario==='video-tab',quiz:scenario==='quiz-tab'});
+ CourseTree.clickNextCatalogItem=()=>{advanced++;return {ok:false,reason:'all-complete'}};
+ async function waitFor(check){for(let i=0;i<100&&!check();i++)await new Promise(r=>setTimeout(r,15));assert(check())}
+ try{
+  Runner.start();
+  if(scenario==='video-tab'){await waitFor(()=>advanced===1);return}
+  await waitFor(()=>Runner.state()==='needsReview');assert.equal(advanced,0);
+  if(scenario==='quiz-tab'){assert.match(Runner.snapshot().awaitingReason,/检测到本章习题/);return}
+  assert.match(Runner.snapshot().awaitingReason,/继续查看下一节/);assert(Runner.resume());await waitFor(()=>advanced===1);
+ }finally{Runner.stop();e.window.close()}
+});

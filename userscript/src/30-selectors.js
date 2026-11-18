@@ -62,7 +62,7 @@ const SEL = {
   // 注意：不要用 [class*="tab"] 这种宽泛选择器——实机验证时它误匹配到了
   // 页面里无关的隐藏文本（"请输入验证码…"），导致任务类型判断被污染。
   taskTabVideo: /课程视频|视频/,
-  taskTabQuiz: /章节测验|测验|作业/,
+  taskTabQuiz: /章节测验|测验|作业|课后测试|课后练习/,
   taskTabSelector: '.prev_white, .prev_title',
 
   // ===== 页面级"下一节"按钮 =====
